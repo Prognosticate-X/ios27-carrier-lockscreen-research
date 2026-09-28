@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PayloadContent</key>
+	<array>
+		<dict>
+			<key>PayloadIdentifier</key>
+			<string>com.prognosticate.footnote</string>
+			<key>PayloadType</key>
+			<string>com.apple.shareddeviceconfiguration</string>
+			<key>PayloadUUID</key>
+			<string>A1B2C3D4-E5F6-7A8B-9C0D-1E2F3A4B5C6D</string>
+			<key>PayloadVersion</key>
+			<integer>1</integer>
+			<key>LockScreenFootnote</key>
+			<string>Prognosticate-X · iOS 27.0</string>
+		</dict>
+	</array>
+	<key>PayloadDisplayName</key>
+	<string>Lock Screen Footnote</string>
+	<key>PayloadIdentifier</key>
+	<string>com.prognosticate.profile</string>
+	<key>PayloadType</key>
+	<string>Configuration</string>
+	<key>PayloadUUID</key>
+	<string>B2C3D4E5-F6A7-8B9C-0D1E-2F3A4B5C6D7E</string>
+	<key>PayloadVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>

@@ -133,6 +133,9 @@ Our static reverse engineering of iOS/macOS 27 shared caches and runtime framewo
 ├── iOS27_Carrier_LockScreen_Research_Handoff.md       # Original local agent handoff document
 ├── tools/                                             # Automation and generator scripts
 │   └── generate_statusbar_archive.py                  # iOS 27 StatusBarOverrides.archive bplist generator
+├── examples/                                          # Ready-to-use sample payloads
+│   ├── footnote_sample.mobileconfig                   # Official profile payload for Lock Screen Footnote
+│   └── StatusBarOverrides_sample.archive              # Verified modern archive payload for Carrier Name
 ├── assets/                                            # Empirical screenshots from iOS 27 testing
 │   ├── iphone_se_carrier_screenshot.png               # Visual proof of custom carrier rendering on iOS 27
 │   └── simctl_override_screenshot.png                 # iPhone 16 Pro Max Dynamic Island status bar capture
