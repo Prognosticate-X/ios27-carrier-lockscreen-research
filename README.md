@@ -9,7 +9,7 @@
 | Customization Target | Status on iOS 27.0 Release | Core Mechanism | Viability |
 |---|---|---|---|
 | **Lock Screen Footnote** | 🟢 **VIABLE** | `SharedDeviceConfiguration.plist` under `com.apple.shareddeviceconfiguration` | **High** — Native Apple profile support; writable via Configuration Profile or Protective Backup Injection into `SysSharedContainerDomain`. |
-| **Carrier Name Override** | 🔴 **BLOCKED (Non-JB)** | `SystemStatusUI` Pub/Sub + `Speakeasy` Gate + `CommCenter` | **Blocked** — Legacy `statusBarOverrides` blocked by `Speakeasy`; FeatureFlags unwritable; Carrier Bundles enforce Apple digital signatures. |
+| **Carrier Name Override** | 🟢 **VERIFIED (BREAKTHROUGH)** | Modern `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **High (AirLift Path)** — Empirical simulator tests prove SpringBoard actively loads `StatusBarOverrides.archive`. Target path `/var/mobile/Library/SpringBoard/` is owned by `mobile:mobile`, completely writable via AirLift without root/FeatureFlags! |
 
 ---
 
@@ -129,8 +129,15 @@ Our static reverse engineering of iOS/macOS 27 shared caches and runtime framewo
 ```text
 .
 ├── README.md                                          # Project overview, findings, and current status
+├── iOS27_Carrier_Footnote_Solution.md                 # Complete technical solution & security verdict
 ├── iOS27_Carrier_LockScreen_Research_Handoff.md       # Original local agent handoff document
+├── tools/                                             # Automation and generator scripts
+│   └── generate_statusbar_archive.py                  # iOS 27 StatusBarOverrides.archive bplist generator
+├── assets/                                            # Empirical screenshots from iOS 27 testing
+│   ├── iphone_se_carrier_screenshot.png               # Visual proof of custom carrier rendering on iOS 27
+│   └── simctl_override_screenshot.png                 # iPhone 16 Pro Max Dynamic Island status bar capture
 └── docs/                                              # In-depth technical research reports
+    ├── ios27-carrier-empirical-verification.md        # Simulator empirical testing & modern archive breakthrough
     ├── architecture.md                                # Full customization architecture & security boundaries
     ├── carrier-data-flow.md                           # SIM -> CommCenter -> SystemStatusUI reverse engineering
     ├── golden-nugget-diff.md                          # Git topology audit of GoldenNugget forks

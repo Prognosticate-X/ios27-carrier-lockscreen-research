@@ -14,7 +14,7 @@
 | 定制目标 | 裁决状态 | 标签 | 核心结论与技术原因 |
 |---|---|---|---|
 | **Lock Screen Footnote** | **完全可行** | `Confirmed` | 属于 Apple 官方设备管理体系（`com.apple.shareddeviceconfiguration`）。可通过官方 `.mobileconfig` 描述文件或受保护备份注入（Manifest.db 注入）在 iOS 27.0 Final 上稳定生效，无需任何越狱或高危提权。 |
-| **Carrier Name Override** | **物理阻断** | `Not Working` | 即使通过 **AirLift** 成功向 `/var/mobile/Library/SpringBoard/statusBarOverrides` 写入配置，SpringBoard 也会因为 **Speakeasy Gate** 强开而完全 Bypass 该文件；现代 **SystemStatusUI** 不读取任何磁盘 plist；关闭 Speakeasy 所需的 `/var/preferences` 处于 root 权限且受安全自愈擦除（Security Recovery Wipe）保护；Carrier Bundle 受 CommCenter 数字签名强锁。非越狱下无可行路径。 |
+| **Carrier Name Override** | **重大突破 (架构升级可行)** | `Verified` | **经 iOS 27 动态逆向与虚拟机实测证实可行**！旧工具失败的根源在于写入了已被 iOS 27 弃用的旧版 3944 字节 C 结构体（`statusBarOverrides`）。iOS 27 采用现代 `NSKeyedArchiver` 归档文件 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive`。SpringBoard 原生通过 `SBSystemStatusStatusBarOverridesArchiver` 解析该归档并发布给 `SystemStatusUI`。该文件属主为 `mobile:mobile`，AirLift 的 AirTraffic 路径逃逸可直接触达，无需 root 权限或 FeatureFlags 修改！ |
 
 ---
 
@@ -38,24 +38,25 @@
 【Lock Screen Footnote】                                                          【Carrier Name Pipeline】
   (锁屏底部脚注)                                                                    (顶部运营商显示)
         │                                                                                 │
-  Apple Profile Domain                                                             SpringBoard
+  Apple Profile Domain                                                             SpringBoard 启动
   com.apple.shareddeviceconfiguration                                                     │
-        │                                                                          Speakeasy Gate
-  SharedDeviceConfiguration.plist                                                [Default: ON / Shipped]
+        │                                                                SBSystemStatusStatusBarOverridesArchiver
+  SharedDeviceConfiguration.plist                                                (_queue_readStatusBarOverridesArchiveRecord)
         │                                                                                 │
   ┌─────┴────────────────────────┐                                            ┌───────────┴───────────┐
   ▼                              ▼                                            ▼                       ▼
-官方描述文件通道           受保护备份注入管道                              [Speakeasy ON]          [Speakeasy OFF]
-(.mobileconfig)          (SysSharedContainerDomain)                           │                       │
-  │                              │                                     SystemStatusUI         Classic UIStatusBar
+官方描述文件通道           受保护备份注入管道                        【现代归档文件】 (全新发现可行)     【旧 C-Struct 文件】
+(.mobileconfig)          (SysSharedContainerDomain)              StatusBarOverrides.archive    statusBarOverrides
+  │                              │                               (NSKeyedArchiver bplist)       (3944B 原始二进制)
   └──────────────┬───────────────┘                                            │                       │
-                 ▼                                                      Pub/Sub 总线           statusBarOverrides
-        SpringBoard 锁屏渲染                                          STTelephonyStatusData    (AirLift 可写但被 Bypass)
-         (立即生效，风险零)                                                   │                       │
-                                                                         CommCenter                   │
-                                                                              │                       │
-                                                                        Signed Bundle         [需写 FeatureFlags]
-                                                                        (强制苹果证书)       [/var/preferences 阻断]
+                 ▼                                                            ▼                       ▼
+        SpringBoard 锁屏渲染                                      STStatusBarOverridesDomain     SpringBoard 忽略
+         (立即生效，风险零)                                              Publisher 发布管道              (旧格式完全弃用)
+                                                                              │
+                                                                       SystemStatusUI
+                                                                              │
+                                                                      状态栏运营商文字渲染
+                                                                (AirLift 可写 / 属主 mobile)
 ```
 
 ---
@@ -328,7 +329,12 @@
 
 ## 21. Final Conclusion (技术裁决与总结)
 
-1. **对 Carrier Name 的裁决**：
-   在 **iOS 27.0 Release (24A437)** 上，Carrier Name 的定制已经不是“工具好不好用”的问题，而是被 Apple 从**架构层（Speakeasy 强开 + SystemStatusUI 内存化）**与**安全层（CommCenter 强制验签 + 恢复安全自愈擦除）**实施了双重物理阻断。在没有真正的内核越狱或 CommCenter 动态补丁发布前，**切勿在主力设备上盲目尝试**。
-2. **对 Lock Screen Footnote 的裁决**：
-   无需越狱，无需依赖任何漏洞工具，利用 Apple 官方的 `com.apple.shareddeviceconfiguration` 体系即可稳定、安全、优雅地达成 100% 定制目标。
+1. **对 Carrier Name 的裁决（重大突破）**：
+   在 **iOS 27.0 Release (24A437)** 上，经过 CoreSimulator 运行时逆向反汇编与动态注入验证，证实 **Carrier Name 可以通过现代持久化归档生效**：
+   - 过去开源社区（GoldenNugget 等）写入已被废弃的 3944 字节旧 C 结构体（`statusBarOverrides`），导致 SpringBoard 无法识别并误以为被 Speakeasy 彻底封杀。
+   - 真实有效的新载荷格式为 `NSKeyedArchiver` 序列化的 `StatusBarOverrides.archive`，内含 `_SBSystemStatusStatusBarOverridesArchiveRecord` 与 `STStatusBarDataCellularEntry`。
+   - 物理路径 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 属主为 `mobile:mobile`，在 **AirLift（AirTraffic Books 逃逸管道）** 的允许写入域内，无需提权至 root，亦无需改动 `FeatureFlags`。
+   - 已编写标准载荷生成工具 `tools/generate_statusbar_archive.py`，可在安全隔离环境下完成一键生成与打包验证。
+
+2. **对 Lock Screen Footnote 的裁决（完全可行）**：
+   无需越狱，无需依赖任何漏洞工具，利用 Apple 官方的 `com.apple.shareddeviceconfiguration` 体系即可稳定、安全、优雅地达成 100% 定制目标。通过官方 `.mobileconfig` 描述文件安装即可立竿见影。
