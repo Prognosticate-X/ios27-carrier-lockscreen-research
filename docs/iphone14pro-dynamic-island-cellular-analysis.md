@@ -26,6 +26,8 @@ iPhone 14 Pro 摒弃了传统的刘海切口，采用了居中的“药丸+打�
    - 状态栏左耳位置无需重复渲染小数字时间，SpringBoard 会将主卡/副卡运营商名称（例如 `中国移动 5G` 或 `中国移动 | 中国联通`）以跑马灯或静态标签形式渲染于左上角。
 2. **控制中心 (Control Center Header)**：
    - 从右上角下拉呼出控制中心时，系统挂起灵动岛顶栏，在展开的控制中心顶端左侧完整显示主卡与副卡运营商名称。
+   - **实测验证**：已在 iOS 27.0 (iPhone 14 Pro) 成功点亮双卡定制运营商 `[P] Testname` 与 `[S] Test for name`。
+   ![iPhone 14 Pro iOS 27 Dual SIM Control Center](../assets/iphone14pro_controlcenter_testname.png)
 3. **设置与蜂窝网络 (Settings -> Cellular)**：
    - 读取系统运营商配置状态。
 

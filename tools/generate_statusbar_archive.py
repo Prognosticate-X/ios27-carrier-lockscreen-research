@@ -237,6 +237,7 @@ def main():
     parser.add_argument("--reset", action="store_true", help="Generate an empty reset archive to restore system default")
     parser.add_argument("-i", "--inspect", help="Inspect an existing archive file")
     parser.add_argument("-o", "--output", default="StatusBarOverrides.archive", help="Output archive path")
+    parser.add_argument("--deploy-simulator", nargs="?", const="booted", help="Deploy archive directly to a booted simulator (or specify UDID) and reload SpringBoard")
 
     args = parser.parse_args()
 
@@ -266,6 +267,31 @@ def main():
 
     status_str = "RESET (Default Carrier)" if args.reset else f"Primary='{args.carrier}', Secondary='{args.secondary_carrier}'"
     print(f"[✓] Generated '{args.output}' successfully ({len(payload)} bytes). Mode: {status_str}")
+
+    if args.deploy_simulator:
+        import subprocess, re
+        sim_target = args.deploy_simulator
+        if sim_target == "booted":
+            out = subprocess.check_output(["xcrun", "simctl", "list", "devices"], text=True)
+            booted_matches = re.findall(r"\(([0-9A-F\-]{36})\)\s+\(Booted\)", out)
+            if not booted_matches:
+                print("[!] No booted simulator found to deploy.")
+                return
+            sim_target = booted_matches[0]
+            print(f"[*] Detected booted simulator: {sim_target}")
+
+        import os
+        sim_sb_dir = os.path.expanduser(f"~/Library/Developer/CoreSimulator/Devices/{sim_target}/data/Library/SpringBoard")
+        os.makedirs(sim_sb_dir, exist_ok=True)
+        dest_archive = os.path.join(sim_sb_dir, "StatusBarOverrides.archive")
+        with open(dest_archive, "wb") as f:
+            f.write(payload)
+        print(f"[✓] Copied archive to {dest_archive}")
+
+        # Kill simulator systemstatusd and SpringBoard so cache resets
+        subprocess.run(["pkill", "-9", "-f", "systemstatusd"], stderr=subprocess.DEVNULL)
+        subprocess.run(["killall", "-9", "SpringBoard"], stderr=subprocess.DEVNULL)
+        print(f"[✓] Restarted SpringBoard and systemstatusd for simulator {sim_target}. Changes applied!")
 
 
 if __name__ == "__main__":
