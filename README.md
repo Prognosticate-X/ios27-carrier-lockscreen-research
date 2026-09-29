@@ -54,7 +54,44 @@ Reverse engineering of `SBSystemStatusStatusBarOverridesArchiver` in `SpringBoar
 - **Startup Read (`0x5b5688`)**: On launch, SpringBoard unarchives `StatusBarOverrides.archive`, updates `STStatusBarOverridesStatusDomainPublisher`, and publishes directly to `SystemStatusUI`.
 - **Auto-Eviction on Reset (`0x5b5444`)**: If the decoded record is empty or invalid, SpringBoard automatically calls `removeItemAtURL:`, clearing the file and restoring factory carrier defaults.
 - **`systemstatusd` Memory Sync & Cache Invalidation**: On iOS 27, the `systemstatusd` system daemon maintains publisher records in memory. If updating `StatusBarOverrides.archive` live on a running system, restarting both `systemstatusd` and `SpringBoard` prevents in-memory cache overwriting the newly written archive.
-- **Delivery via AirLift**: `airlift` utilizes an AirTraffic Books path traversal exploit (`p0/p1/p2/link -> ../../../var/mobile/Library/SpringBoard`) to write `StatusBarOverrides.archive` into SpringBoard non-interactively without jailbreak.
+
+### 3. AirLift Physical Deployment Architecture & Sandbox Bypass (实机免越狱传输管道)
+
+#### 3.1 为什么实机必须依赖 AirLift？(Why AirLift is Essential for Physical Devices)
+- **模拟器 vs 真机差异**：在 Mac 本地 CoreSimulator 调试时，宿主机拥有直接文件系统读写权限（`~/Library/Developer/CoreSimulator/...`）；但在物理 iPhone 上，iOS 沙箱机制禁止外部 USB 直接写入系统目录 `/var/mobile/Library/SpringBoard/`。
+- **AirLift 的定位（运输载具）**：AirLift 利用 Apple 原生媒体同步协议漏洞，充当了**免越狱将定制文件送入 SpringBoard 的“特许运输车”**。
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│                                 Physical iPhone Pipeline                               │
+│                                                                                        │
+│   [Mac Host CLI] ─────────────► [AirLift Exploit Engine] ────────► [iOS AirTraffic]    │
+│  airlift_carrier_deploy.py       StreamingZip + Books.plist         com.apple.atc      │
+│                                                                           │            │
+│                                                                           ▼ (Path Traversal)
+│   [SpringBoard Loads] ◄────── [StatusBarOverrides.archive] ◄───── [ATAirlock Move]     │
+│   SystemStatusUI Shows        /var/mobile/Library/SpringBoard/    (Runs as mobile:501) │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 3.2 AirTraffic Books 路径遍历逃逸原理 (Path Traversal Exploit)
+AirLift 利用了 iOS 媒体同步服务（`com.apple.atc` / AirTraffic）在处理 Books（电子书）同步资产时的相对路径校验缺陷：
+1. **构造定制 Zip 归档**：在 StreamingZip 中埋入指向目标父目录的跨级符号链接：
+   `p0/p1/p2/link -> ../../../var/mobile/Library/SpringBoard`
+2. **通过 AFC 暂存**：通过 `com.apple.streaming_zip_conduit` 服务解压至 `/var/mobile/Media` 临时目录。
+3. **触发 AirTraffic 同步**：通过 `airtraffic_host` 模拟 iTunes 同步会话，向 `com.apple.atc` 发送 `FileComplete` 消息。
+4. **两阶段原子移动**：iOS 底层 `-[ATAirlock processCompletedAsset:]` 顺着符号链接将 payload 移动至沙箱外部的 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive`。
+5. **权限合法性**：AirTraffic 守护进程以 `mobile:mobile` (uid 501) 运行，恰好与 SpringBoard 目录的属主完全一致，无须提升至 root 即可完成写入！
+
+#### 3.3 为什么其他 AirLift 项目失败，而我们成功？(The "Payload vs Vehicle" Breakthrough)
+- **行业误区（运送了报废零件）**：PyAirLift、GoldenNugget 等项目虽然掌握了 AirLift 载具，但他们送入的是已被 iOS 27 废弃的旧版 3944 字节 C 结构体（`statusBarOverrides`），导致 SpringBoard 无法识别，误以为是 AirLift 在 iOS 27 上失效。
+- **我们的协同突破（全新零件 + 合适载具）**：我们将逆向破解出的现代 `StatusBarOverrides.archive` 二进制归档作为载荷，与 AirLift 深度整合，成功打通了 iOS 27 实机免越狱定制闭环。
+
+#### 3.4 ATAirlock `rename` 限制应对策略 (Existing-File Overwrite Mitigation)
+- **底层机制**：Cocoa `[NSFileManager moveItemAtPath:toPath:error:]` 在目标文件已存在时会返回 `NSFileWriteFileExistsError`。
+- **我们的应对方案**：
+  1. **出厂洁净态**：全新或未定制的 iOS 27 设备上默认不存在 `StatusBarOverrides.archive`，首次部署天然满足创建条件。
+  2. **系统自愈清理**：利用 SpringBoard 逆向发现的 `_queue_writeOutArchiveRecord:` 自愈机制，通过下发空归档触发 SpringBoard 主动调用 `removeItemAtURL:` 删除目标文件，重置为空白状态后再行部署。
 
 ---
 
