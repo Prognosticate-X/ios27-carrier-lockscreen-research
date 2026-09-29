@@ -2,6 +2,11 @@
 
 [English](README.md) | [简体中文](README_ZH.md)
 
+[![iOS 27 兼容](https://img.shields.io/badge/iOS-27.x%20Final-blue.svg)](https://apple.com/ios)
+[![实现途径](https://img.shields.io/badge/%E6%96%B9%E6%A1%88-%E5%85%8D%E8%B6%8A%E7%8B%B1%20%7C%20AirLift-success.svg)](#%EF%B8%8F-airlift-%E5%AE%9E%E6%9C%BA%E5%85%8D%E8%B6%8A%E7%8B%B1%E4%BC%A0%E8%BE%93%E7%AE%A1%E9%81%93%E4%B8%8E%E6%B2%99%E7%AE%B1%E9%80%83%E9%80%B8)
+[![实测状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%AE%9E%E6%9C%BA%E9%AA%8C%E8%AF%81%E9%80%9A%E8%BF%87-brightgreen.svg)](#-真实设备视觉证据-ios-270-release)
+[![适配设备](https://img.shields.io/badge/%E8%AE%BE%E5%A4%87-%E5%85%A8%E6%9C%BA%E5%9E%8B%E9%80%9A%E7%94%A8%20(%E7%81%B5%E5%8A%A8%E5%B2%9B%20%2B%20%E7%BB%8F%E5%85%B8%E5%B1%8F)-orange.svg)](#-通用硬件与状态栏适配矩阵)
+
 > 面向 **所有 iOS 27.x 设备**（涵盖灵动岛全系与经典刘海/Home键机型）的通用型、免越狱底层逆向工程研究框架与自动化工具链，支持持久化定制 **蜂窝网络运营商名称 (Carrier Name)**（单卡/双卡）与 **锁屏底部脚注 (Lock Screen Footnote)**。
 
 ---

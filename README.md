@@ -2,6 +2,11 @@
 
 [English](README.md) | [简体中文](README_ZH.md)
 
+[![iOS 27 Compatible](https://img.shields.io/badge/iOS-27.x%20Final-blue.svg)](https://apple.com/ios)
+[![Method](https://img.shields.io/badge/Method-Non--Jailbreak%20%7C%20AirLift-success.svg)](#%EF%B8%8F-airlift-physical-deployment-architecture--sandbox-bypass)
+[![Status](https://img.shields.io/badge/Status-Empirically%20Verified-brightgreen.svg)](#-empirical-visual-verification-ios-270-release)
+[![Devices](https://img.shields.io/badge/Devices-Universal%20(Dynamic%20Island%20%2B%20Classic)-orange.svg)](#-universal-hardware--display-matrix)
+
 > A universal, non-jailbreak reverse engineering framework and toolchain for customizing **Cellular Carrier Name** (Single/Dual SIM) and **Lock Screen Footnote** across **all iOS 27.x devices** (Dynamic Island and Classic Notch/Home models).
 
 ---
