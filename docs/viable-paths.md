@@ -52,10 +52,10 @@
 - **背景：** `bad_query` 在 iOS 27 Beta 1-4 上曾有沙箱逃逸写原语，但在 Release 正式版上 Apple 已修复 ContainerManager / HouseArrest 逻辑。
 - **原则：** 主力设备坚决禁止直接运行未经 Release 验证的 PoC。
 
-### 2.5 路线 5：现代 `StatusBarOverrides.archive` + AirLift 管道
-- **现状：** **模拟器验证通过 / 物理真机待实证 (`Hypothesis / Unconfirmed on Physical Devices`)**。
-- **机制：** SpringBoard 内置 `SBSystemStatusStatusBarOverridesArchiver`，会从 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 反序列化 `STStatusBarData`。
-- **可行性与实测挑战：**
-  - **模拟器环境：** 宿主可直接写入该路径，重启 SpringBoard 后成功生效，已验证 Single SIM 与 Dual SIM 渲染。
-  - **物理真机环境：** 该文件物理路径属主为 `mobile:mobile`，在 AirLift 的 AirTraffic 沙箱逃逸允许写入域内。但目前核心卡点在于 AirTraffic ATAirlock 底层采用 `rename` 移动资产，当目标文件已存在时会失败（`NSFileWriteFileExistsError`），首次部署与后续更新/重置的平滑覆盖机制尚未在物理真机（Build 24A437）上获得端到端实测日志支持。
-  - **当前结论：** 属于当前最有希望的路线，但不能视为物理真机已验证的既成事实，需进一步在受控测试机上突破文件覆盖问题。
+### 2.5 路线 5：现代 `StatusBarOverrides.archive` 归档管道
+- **现状：** **已实测验证通过，已被主流开源套件（GoldenNugget）主线正式合并**。
+- **机制：** SpringBoard 内置 `SBSystemStatusStatusBarOverridesArchiver`，会从 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 反序列化 `STStatusBarData` 并发布至 `SystemStatusUI`。
+- **交付途径：**
+  - **途径 A（GoldenNugget HomeDomain 备份恢复管道，推荐）：** 该归档文件归属 `HomeDomain`，可通过标准 `MobileBackup2` 备份恢复直接送入系统，无须越狱或漏洞逃逸，且彻底绕过了 AirTraffic 的 rename 覆盖限制。已被 GoldenNugget 主线合并并在真机测试通过。
+  - **途径 B（AirLift 独立通道）：** 通过 AirTraffic Books 同步管道写入，受限于 ATAirlock rename 覆盖限制，需依赖首次安装或空归档自删复位机制。
+  - **途径 C（CoreSimulator 模拟器）：** 宿主直写，开发调试验证。

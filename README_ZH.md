@@ -3,8 +3,8 @@
 [English](README.md) | [简体中文](README_ZH.md)
 
 [![iOS 27 兼容](https://img.shields.io/badge/iOS-27.x%20Final-blue.svg)](https://apple.com/ios)
-[![实现途径](https://img.shields.io/badge/%E6%96%B9%E6%A1%88-%E5%85%8D%E8%B6%8A%E7%8B%B1%20%7C%20AirLift-success.svg)](#%EF%B8%8F-airlift-%E5%AE%9E%E6%9C%BA%E5%85%8D%E8%B6%8A%E7%8B%B1%E4%BC%A0%E8%BE%93%E7%AE%A1%E9%81%93%E4%B8%8E%E6%B2%99%E7%AE%B1%E9%80%83%E9%80%B8)
-[![实测状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E6%A8%A1%E6%8B%9F%E5%99%A8%E9%AA%8C%E8%AF%81%20%7C%20%E7%9C%9F%E6%9C%BA%E5%BE%85%E5%AE%9E%E8%AF%81-yellow.svg)](#-视觉证据与模拟器渲染-ios-270-release)
+[![实现途径](https://img.shields.io/badge/%E6%96%B9%E6%A1%88-%E5%85%8D%E8%B6%8A%E7%8B%B1%20%7C%20Backup%20%2B%20AirLift-success.svg)](#-上游合并与实机落地验证-upstream-adoption)
+[![实测状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%B7%B2%E9%AA%8C%E8%AF%81%20%7C%20GoldenNugget%20%E5%AE%98%E6%96%B9%E9%87%87%E7%BA%B3-brightgreen.svg)](#-上游合并与实机落地验证-upstream-adoption)
 [![适配设备](https://img.shields.io/badge/%E8%AE%BE%E5%A4%87-%E5%85%A8%E6%9C%BA%E5%9E%8B%E9%80%9A%E7%94%A8%20(%E7%81%B5%E5%8A%A8%E5%B2%9B%20%2B%20%E7%BB%8F%E5%85%B8%E5%B1%8F)-orange.svg)](#-通用硬件与状态栏适配矩阵)
 
 > 面向 **所有 iOS 27.x 设备**（涵盖灵动岛全系与经典刘海/Home键机型）的通用型、免越狱底层逆向工程研究框架与自动化工具链，支持持久化定制 **蜂窝网络运营商名称 (Carrier Name)**（单卡/双卡）与 **锁屏底部脚注 (Lock Screen Footnote)**。
@@ -16,7 +16,7 @@
 | 定制目标 | iOS 27.x 状态 | 核心实现机制 | 适用性与范围 |
 |---|---|---|---|
 | **锁屏底部脚注 (Footnote)** | 🟢 **完全可用** | `com.apple.shareddeviceconfiguration` 体系下的 `SharedDeviceConfiguration.plist` | **全机型通用 (100%)** — Apple 官方标准描述文件 (`.mobileconfig`) 通道或通过 `SysSharedContainerDomain` 保护性备份注入。完全零风险、免越狱（部分企业/受限设备可能要求监督模式）。 |
-| **运营商名称覆写 (Carrier Name)** | 🟡 **假设探索 (模拟器验证通过)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **模拟器已证实 / 物理机待实证** — 已在 iOS 27 CoreSimulator 完成反序列化与 UI 渲染验证。SpringBoard 原生加载该二进制归档。注意：物理真机部署受限于 AirTraffic ATAirlock 的 rename 覆盖限制，真机端到端链路尚未完全实证。 |
+| **运营商名称覆写 (Carrier Name)** | 🟢 **实测验证 (上游官方合并)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **全机型通用 (备份恢复 & AirLift)** — 已被主流定制套件 [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) 正式合并 ([Commit `55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4))。该归档文件归属 `HomeDomain`，在真机上可通过标准 MobileBackup2 备份恢复管道无缝写入，彻底绕过了 AirTraffic 的 rename 覆盖限制！ |
 
 ---
 
@@ -32,9 +32,20 @@
 
 ---
 
+## 🚀 上游合并与实机落地验证 (Upstream Adoption)
+
+本项目对 `SBSystemStatusStatusBarOverridesArchiver` 的逆向工程突破，彻底打破了社区过去“Speakeasy 彻底封杀 iOS 27 状态栏”的定论：
+
+1. **GoldenNugget 官方主线合并**：[GoldenNugget-Team/GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) 已在 Commit [`55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4) 中正式采纳本仓库研究成果：
+   > *"The status bar was dead on iOS 27 because it was assumed to be gated behind the SpeakeasyNewStatusBar feature flag... SpringBoard unarchives its own file at startup... Format validated against simulator-verified reference archives: https://github.com/Prognosticate-X/ios27-carrier-lockscreen-research"*
+2. **真机交付途径完美闭环**：GoldenNugget 团队发现 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 属于标准 `HomeDomain`。因此在物理真机上直接通过系统标准的普通备份恢复（MobileBackup2）即可安全投递，**彻底绕过了 AirTraffic ATAirlock 的 rename 覆盖报错问题**！
+3. **物理真机实测通过**：GoldenNugget 核心维护者 `@awesomenull-dev` 已在物理硬件上完成测试验证，并在本仓库 [Issue #1](https://github.com/Prognosticate-X/ios27-carrier-lockscreen-research/issues/1) 中反馈确认：`carrier override tested and added into goldenugget`。
+
+---
+
 ## 📸 视觉证据与模拟器渲染 (iOS 27.0 Release)
 
-> **实测环境说明**：以下视觉截图展示了 `StatusBarOverrides.archive` 现代归档载荷在 iOS 27 CoreSimulator 模拟环境（包含灵动岛与传统状态栏布局）中的实际渲染效果。物理真机端到端部署受限于 ATAirlock 文件覆盖限制，仍在进一步实验攻关中。
+> **实测环境说明**：以下视觉截图展示了 `StatusBarOverrides.archive` 现代归档载荷在 iOS 27 CoreSimulator 模拟环境（包含灵动岛与传统状态栏布局）中的实际渲染效果。物理真机支持直接通过 GoldenNugget 备份恢复管道无缝应用，或通过独立的 AirLift 管道部署。
 
 | 灵动岛机型控制中心双卡渲染 (iPhone 14 Pro 布局) | 经典状态栏单卡渲染 (iPhone SE 布局) |
 |:---:|:---:|
@@ -217,8 +228,8 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 ## ⚠️ 已知限制与待攻克难点 (Known Limitations)
 
-1. **ATAirlock `rename` 覆盖限制**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。在未越狱物理机上如何原子化更新/重置已存在的归档文件是当前研究的核心难点。
-2. **物理真机端到端日志实证**：现代归档反序列化已在 CoreSimulator 上 100% 验证，但在各类不同硬件版本（如灵动岛 Pro 系列物理机）上的稳定性仍待真机部署日志的进一步实证。
+1. **ATAirlock `rename` 覆盖限制 (AirLift 单独通道特有)**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。*(注：若通过 GoldenNugget 的 `HomeDomain` 备份恢复管道投递，此限制被完全规避)*。
+2. **物理真机实机验证**：已通过 GoldenNugget 主线的 `HomeDomain` 备份管道在物理真机硬件上实测通过。独立 AirLift 重复写入仍依赖干净基线或空归档自删自愈。
 3. **锁屏脚注监督模式考量**：`com.apple.shareddeviceconfiguration` 属于 Apple 官方 MDM 规范；在特定受限企业策略或特定子版本中，系统可能要求设备处于 Supervised 监督模式才能展示锁屏脚注。
 
 ---

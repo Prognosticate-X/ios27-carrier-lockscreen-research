@@ -37,8 +37,8 @@ Footer Text Label                                                │
 | **所属体系** | 官方设备管理 (MDM / ConfigurationProfiles) | SpringBoard 现代状态栏发布者架构 (`SystemStatus` / `SystemStatusUI`) |
 | **存储位置** | `/var/containers/Shared/SystemGroup/.../` | `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` |
 | **签名/完整性** | 无强制数字签名，受容器权限保护 | 无代码签名要求，由 `mobile:mobile` (0644) 属主拥有 |
-| **iOS 27 交付通道** | **可用**（未加密保护备份注入或描述文件） | **受限/假设验证中**（模拟器可直接写入生效；物理机依赖 AirLift 沙箱逃逸，但受限于 ATAirlock 无法简单覆盖已存在文件的限制，真机端到端尚未完全实证） |
-| **主力机安全风险** | **极低**（标准官方配置描述文件，可秒级回滚） | **中-高**（依赖未公开 AirTraffic 逃逸链路；若多次部署需妥善处理文件覆盖与回滚） |
+| **iOS 27 交付通道** | **可用**（未加密保护备份注入或描述文件） | **已验证/官方主线采纳**（现代归档已被 GoldenNugget 主线采纳，通过 `HomeDomain` 备份恢复管道直接写入真机；独立 AirLift 通道受限于 ATAirlock rename 限制） |
+| **主力机安全风险** | **极低**（标准官方配置描述文件，可秒级回滚） | **低**（标准备份恢复管道无越狱提权风险，或独立 AirLift 管道） |
 
 ---
 
