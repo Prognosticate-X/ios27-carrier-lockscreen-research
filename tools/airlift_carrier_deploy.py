@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-AirLift Carrier Deployer for iOS 27 (Physical Devices)
+Universal AirLift Carrier Deployer for iOS 27 (Physical Devices)
 Persistently applies custom carrier name & cellular status bar configuration
-to iPhone 14 Pro and compatible devices running iOS 27.x without jailbreak.
+to any compatible iPhone (Dynamic Island or Classic) running iOS 27.x without jailbreak.
 """
 
 from __future__ import annotations
