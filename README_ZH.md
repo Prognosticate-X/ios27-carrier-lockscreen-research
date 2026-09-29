@@ -4,7 +4,7 @@
 
 [![iOS 27 兼容](https://img.shields.io/badge/iOS-27.x%20Final-blue.svg)](https://apple.com/ios)
 [![实现途径](https://img.shields.io/badge/%E6%96%B9%E6%A1%88-%E5%85%8D%E8%B6%8A%E7%8B%B1%20%7C%20AirLift-success.svg)](#%EF%B8%8F-airlift-%E5%AE%9E%E6%9C%BA%E5%85%8D%E8%B6%8A%E7%8B%B1%E4%BC%A0%E8%BE%93%E7%AE%A1%E9%81%93%E4%B8%8E%E6%B2%99%E7%AE%B1%E9%80%83%E9%80%B8)
-[![实测状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%AE%9E%E6%9C%BA%E9%AA%8C%E8%AF%81%E9%80%9A%E8%BF%87-brightgreen.svg)](#-真实设备视觉证据-ios-270-release)
+[![实测状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E6%A8%A1%E6%8B%9F%E5%99%A8%E9%AA%8C%E8%AF%81%20%7C%20%E7%9C%9F%E6%9C%BA%E5%BE%85%E5%AE%9E%E8%AF%81-yellow.svg)](#-视觉证据与模拟器渲染-ios-270-release)
 [![适配设备](https://img.shields.io/badge/%E8%AE%BE%E5%A4%87-%E5%85%A8%E6%9C%BA%E5%9E%8B%E9%80%9A%E7%94%A8%20(%E7%81%B5%E5%8A%A8%E5%B2%9B%20%2B%20%E7%BB%8F%E5%85%B8%E5%B1%8F)-orange.svg)](#-通用硬件与状态栏适配矩阵)
 
 > 面向 **所有 iOS 27.x 设备**（涵盖灵动岛全系与经典刘海/Home键机型）的通用型、免越狱底层逆向工程研究框架与自动化工具链，支持持久化定制 **蜂窝网络运营商名称 (Carrier Name)**（单卡/双卡）与 **锁屏底部脚注 (Lock Screen Footnote)**。
@@ -15,8 +15,8 @@
 
 | 定制目标 | iOS 27.x 状态 | 核心实现机制 | 适用性与范围 |
 |---|---|---|---|
-| **锁屏底部脚注 (Footnote)** | 🟢 **完全可用** | `com.apple.shareddeviceconfiguration` 体系下的 `SharedDeviceConfiguration.plist` | **全机型通用 (100%)** — Apple 官方标准描述文件 (`.mobileconfig`) 通道或通过 `SysSharedContainerDomain` 保护性备份注入。完全零风险、免越狱。 |
-| **运营商名称覆写 (Carrier Name)** | 🟢 **实测验证 (重大突破)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **全机型通用 (AirLift 管道)** — 已在 iOS 27 模拟器及实机环境完成验证。SpringBoard 原生加载 `/var/mobile/Library/SpringBoard/` 目录归档（属主 `mobile:mobile`）。完全绕过 CommCenter 签名屏障与 Speakeasy 特性开关！ |
+| **锁屏底部脚注 (Footnote)** | 🟢 **完全可用** | `com.apple.shareddeviceconfiguration` 体系下的 `SharedDeviceConfiguration.plist` | **全机型通用 (100%)** — Apple 官方标准描述文件 (`.mobileconfig`) 通道或通过 `SysSharedContainerDomain` 保护性备份注入。完全零风险、免越狱（部分企业/受限设备可能要求监督模式）。 |
+| **运营商名称覆写 (Carrier Name)** | 🟡 **假设探索 (模拟器验证通过)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **模拟器已证实 / 物理机待实证** — 已在 iOS 27 CoreSimulator 完成反序列化与 UI 渲染验证。SpringBoard 原生加载该二进制归档。注意：物理真机部署受限于 AirTraffic ATAirlock 的 rename 覆盖限制，真机端到端链路尚未完全实证。 |
 
 ---
 
@@ -26,17 +26,19 @@
 
 | 设备家族 | 覆盖机型 | 屏幕形态 | 蜂窝网络信号渲染行为 | 实测验证状态 |
 |---|---|---|---|---|
-| **灵动岛机型 (Pro 系列)** | iPhone 14 Pro / Pro Max<br>iPhone 15 Pro / Pro Max<br>iPhone 16 Pro / Pro Max | 灵动岛 (Dynamic Island) | **单卡**：右耳显示全高 4 格竖条信号。<br>**双卡**：原生上下叠放，上方 4 竖条（主卡）+ 下方 4 圆点（副卡）。<br>**文字展示**：锁屏大时钟模式下左耳跑马灯轮播；控制中心下拉完整展开双卡标签（`[P] 运营商`，`[S] 运营商`）。 | 🟢 **实测验证通过 (已留证)** |
+| **灵动岛机型 (Pro 系列)** | iPhone 14 Pro / Pro Max<br>iPhone 15 Pro / Pro Max<br>iPhone 16 Pro / Pro Max | 灵动岛 (Dynamic Island) | **单卡**：右耳显示全高 4 格竖条信号。<br>**双卡**：原生上下叠放，上方 4 竖条（主卡）+ 下方 4 圆点（副卡）。<br>**文字展示**：锁屏大时钟模式下左耳跑马灯轮播；控制中心下拉完整展开双卡标签（`[P] 运营商`，`[S] 运营商`）。 | 🟢 **模拟器验证通过** |
 | **灵动岛机型 (数字系列)** | iPhone 15 / 15 Plus<br>iPhone 16 / 16 Plus | 灵动岛 (Dynamic Island) | 渲染行为与 Pro 系列完全一致，响应式适配药丸屏幕边界。 | 🟢 **完全兼容** |
-| **经典刘海 / 经典状态栏** | iPhone 13 / 14 / Plus<br>iPhone SE (第 2 / 3 代) | 经典刘海屏 / 16:9 传统屏 | 状态栏左上角直接常驻显示完整运营商文字（如 `中国广电 5G` + 4格信号）。 | 🟢 **实测验证通过 (已留证)** |
+| **经典刘海 / 经典状态栏** | iPhone 13 / 14 / Plus<br>iPhone SE (第 2 / 3 代) | 经典刘海屏 / 16:9 传统屏 | 状态栏左上角直接常驻显示完整运营商文字（如 `中国广电 5G` + 4格信号）。 | 🟢 **模拟器验证通过** |
 
 ---
 
-## 📸 真实设备视觉证据 (iOS 27.0 Release)
+## 📸 视觉证据与模拟器渲染 (iOS 27.0 Release)
 
-| 灵动岛机型控制中心双卡实测 (iPhone 14 Pro, iOS 27.0) | 经典状态栏单卡实测 (iPhone SE, iOS 27.0) |
+> **实测环境说明**：以下视觉截图展示了 `StatusBarOverrides.archive` 现代归档载荷在 iOS 27 CoreSimulator 模拟环境（包含灵动岛与传统状态栏布局）中的实际渲染效果。物理真机端到端部署受限于 ATAirlock 文件覆盖限制，仍在进一步实验攻关中。
+
+| 灵动岛机型控制中心双卡渲染 (iPhone 14 Pro 布局) | 经典状态栏单卡渲染 (iPhone SE 布局) |
 |:---:|:---:|
-| <img src="assets/iphone14pro_controlcenter_testname.png" width="360" alt="iPhone 14 Pro 控制中心双卡实测" /> | <img src="assets/iphone_se_carrier_screenshot.png" width="360" alt="iPhone SE 经典状态栏实测" /> |
+| <img src="assets/iphone14pro_controlcenter_testname.png" width="360" alt="iPhone 14 Pro 控制中心双卡渲染图" /> | <img src="assets/iphone_se_carrier_screenshot.png" width="360" alt="iPhone SE 经典状态栏渲染图" /> |
 | **双卡自定义运营商**：`[P] Testname` 与 `[S] Test for name` | **单卡自定义运营商**：`中国广电 5G` |
 
 ---
@@ -204,9 +206,20 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 ## ⚠️ 主力机安全守则与风险熔断机制
 
-1. **硬编码设备黑名单阻断**：`tools/airlift_carrier_deploy.py` 内部永久强制硬编码主力机识别码（如 `00008140-001C29663062201C`），严禁对其执行任何写入或连接。
-2. **严禁越界修改系统目录**：写入范围被严格限定在 `mobile:mobile` 权限的 `/var/mobile/Library/SpringBoard`，绝不修改 `/var/preferences`，彻底免疫 iOS 27 Security State Recovery Wipe（抹机保护）。
-3. **Books 数据库无痕自愈**：每次执行 AirTraffic 资产同步前后均对 Books 状态进行完整快照与还原，保证媒体数据库零污染。
+1. **动态环境变量设备保护**：`tools/airlift_carrier_deploy.py` 支持通过 `AIRLIFT_BLOCKED_UDIDS` 环境变量（逗号分隔）设置主力机阻断名单，杜绝将测试载荷误写入受保护硬件。
+2. **严格固件测试门控**：支持通过 `AIRLIFT_STRICT_BUILDS=1` 强制限制仅在已知测试过的 iOS 固件（`24A300`, `24A434`, `24A435`, `24A437`, `24A5390f`）上执行。
+3. **写入路径严格白名单**：StreamingZip 路径遍历逻辑严格限制只允许 `/var/mobile/Library/SpringBoard` 目标，杜绝任意目录越界注入风险。
+4. **运营商文字安全长度限制**：运营商名称限制在 64 字符以内，Badge 限制在 8 字符以内。
+5. **严禁越界修改系统目录**：写入范围被严格限定在 `mobile:mobile` 权限的 `/var/mobile/Library/SpringBoard`，绝不修改 `/var/preferences`，彻底免疫 iOS 27 Security State Recovery Wipe（抹机保护）。
+6. **Books 数据库无痕自愈**：每次执行 AirTraffic 资产同步前后均对 Books 状态进行完整快照与还原，保证媒体数据库零污染。
+
+---
+
+## ⚠️ 已知限制与待攻克难点 (Known Limitations)
+
+1. **ATAirlock `rename` 覆盖限制**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。在未越狱物理机上如何原子化更新/重置已存在的归档文件是当前研究的核心难点。
+2. **物理真机端到端日志实证**：现代归档反序列化已在 CoreSimulator 上 100% 验证，但在各类不同硬件版本（如灵动岛 Pro 系列物理机）上的稳定性仍待真机部署日志的进一步实证。
+3. **锁屏脚注监督模式考量**：`com.apple.shareddeviceconfiguration` 属于 Apple 官方 MDM 规范；在特定受限企业策略或特定子版本中，系统可能要求设备处于 Supervised 监督模式才能展示锁屏脚注。
 
 ---
 

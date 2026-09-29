@@ -9,22 +9,22 @@
         ▼                                                                 ▼
 【锁屏底部配置 (Footnote)】                                       【顶部状态栏 (Carrier Name)】
         │                                                                 │
-  SharedDeviceConfiguration                                        SystemStatusUI
+  SharedDeviceConfiguration                                        SpringBoard 启动
         │                                                                 │
-  Apple MDM / Profile Domain                                      Speakeasy Gate
+  Apple MDM / Profile Domain                                      SBSystemStatusStatusBarOverridesArchiver
         │                                                                 │
 +-------+-------+                                                +--------+--------+
 |               |                                                |                 |
-Profile      Backup Injection                               Speakeasy ON      Speakeasy OFF
+Profile      Backup Injection                             现代归档 (.archive)  旧 C-Struct (废弃)
 (.mobileconfig) (Manifest.db)                                    │                 │
-│               │                                          SystemStatusUI    Classic UIStatusBar
+│               │                                         SpringBoard 解析     完全被忽略
 +-------┬-------+                                                │                 │
-        │                                                   CommCenter     statusBarOverrides
-        ▼                                                        │                 │
-SpringBoard Lock Screen                                    Hardware SIM       (无法非越狱关闭)
+        │                                                STStatusPublisher   (Speakeasy 强开)
+        ▼                                                        │
+SpringBoard Lock Screen                                   SystemStatusUI
 Footer Text Label                                                │
-                                                           Signed Carrier
-                                                               Bundle
+(官方通道，稳定可用)                                       (模拟器实测有效 / 物理机受限于
+                                                          ATAirlock rename 覆盖问题)
 ```
 
 ---
@@ -33,12 +33,12 @@ Footer Text Label                                                │
 
 | 维度 | 目标 A：Lock Screen Footnote | 目标 B：Carrier Name Override |
 |---|---|---|
-| **技术机制** | `SharedDeviceConfiguration.plist` | `SystemStatusUI` + `Speakeasy` + `CommCenter` |
-| **所属体系** | 官方设备管理 (MDM / ConfigurationProfiles) | 核心蜂窝通信与现代 UI 渲染总线 |
-| **存储位置** | `/var/containers/Shared/SystemGroup/.../` | 内存瞬态数据 (由 `CommCenter` 实时产生) |
-| **签名/完整性** | 无强制数字签名，受容器权限保护 | Carrier Bundle 强依赖 Apple 根证书签名 |
-| **iOS 27 交付通道** | **可用**（未加密保护备份注入或描述文件） | **阻断**（无合法写原语关闭 Speakeasy 或修改 Bundle） |
-| **主力机安全风险** | **低**（标准字符串注入，不破坏系统逻辑） | **极高**（盲试触发 Security Recovery Wipe 或无服务） |
+| **技术机制** | `SharedDeviceConfiguration.plist` | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) |
+| **所属体系** | 官方设备管理 (MDM / ConfigurationProfiles) | SpringBoard 现代状态栏发布者架构 (`SystemStatus` / `SystemStatusUI`) |
+| **存储位置** | `/var/containers/Shared/SystemGroup/.../` | `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` |
+| **签名/完整性** | 无强制数字签名，受容器权限保护 | 无代码签名要求，由 `mobile:mobile` (0644) 属主拥有 |
+| **iOS 27 交付通道** | **可用**（未加密保护备份注入或描述文件） | **受限/假设验证中**（模拟器可直接写入生效；物理机依赖 AirLift 沙箱逃逸，但受限于 ATAirlock 无法简单覆盖已存在文件的限制，真机端到端尚未完全实证） |
+| **主力机安全风险** | **极低**（标准官方配置描述文件，可秒级回滚） | **中-高**（依赖未公开 AirTraffic 逃逸链路；若多次部署需妥善处理文件覆盖与回滚） |
 
 ---
 

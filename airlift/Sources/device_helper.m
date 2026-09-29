@@ -655,6 +655,11 @@ static BOOL TargetGate(NSDictionary *summary, BOOL *tested) {
     }
     AIRLIFT_TESTED_BUILDS(AIRLIFT_MATCH_TESTED)
 #undef AIRLIFT_MATCH_TESTED
+    // If strict mode is enforced, block any untested builds from proceeding
+    const char *strictEnv = getenv("AIRLIFT_STRICT_BUILDS");
+    if (strictEnv && strcmp(strictEnv, "1") == 0) {
+        return NO;
+    }
     return YES;
 }
 

@@ -4,7 +4,7 @@
 
 [![iOS 27 Compatible](https://img.shields.io/badge/iOS-27.x%20Final-blue.svg)](https://apple.com/ios)
 [![Method](https://img.shields.io/badge/Method-Non--Jailbreak%20%7C%20AirLift-success.svg)](#%EF%B8%8F-airlift-physical-deployment-architecture--sandbox-bypass)
-[![Status](https://img.shields.io/badge/Status-Empirically%20Verified-brightgreen.svg)](#-empirical-visual-verification-ios-270-release)
+[![Status](https://img.shields.io/badge/Status-Simulator%20Confirmed%20%7C%20Physical%20Unverified-yellow.svg)](#-empirical-visual-verification-ios-270-release)
 [![Devices](https://img.shields.io/badge/Devices-Universal%20(Dynamic%20Island%20%2B%20Classic)-orange.svg)](#-universal-hardware--display-matrix)
 
 > A universal, non-jailbreak reverse engineering framework and toolchain for customizing **Cellular Carrier Name** (Single/Dual SIM) and **Lock Screen Footnote** across **all iOS 27.x devices** (Dynamic Island and Classic Notch/Home models).
@@ -15,8 +15,8 @@
 
 | Target Feature | iOS 27.x Status | Core Mechanism | Viability & Scope |
 |---|---|---|---|
-| **Lock Screen Footnote** | 🟢 **VIABLE** | `SharedDeviceConfiguration.plist` under `com.apple.shareddeviceconfiguration` | **Universal (100%)** — Native Apple MDM profile (`.mobileconfig`) or Protective Backup Injection via `SysSharedContainerDomain`. Zero exploit required. |
-| **Carrier Name Override** | 🟢 **VERIFIED (BREAKTHROUGH)** | Modern `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **Universal (AirLift Path)** — Confirmed on iOS 27 CoreSimulator and physical devices. SpringBoard natively loads the binary archive from `/var/mobile/Library/SpringBoard/` (owned by `mobile:mobile`). Bypasses CommCenter signatures and Speakeasy FeatureFlags! |
+| **Lock Screen Footnote** | 🟢 **VIABLE** | `SharedDeviceConfiguration.plist` under `com.apple.shareddeviceconfiguration` | **Universal (100%)** — Native Apple MDM profile (`.mobileconfig`) or Protective Backup Injection via `SysSharedContainerDomain`. Zero exploit required. (Note: specific policy configurations may require Supervision). |
+| **Carrier Name Override** | 🟡 **HYPOTHESIS (SIMULATOR CONFIRMED)** | Modern `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **Simulator Confirmed (Physical Unconfirmed)** — Confirmed on iOS 27 CoreSimulator. SpringBoard natively loads the binary archive from `/var/mobile/Library/SpringBoard/` (owned by `mobile:mobile`). Note: Physical on-device deployment via AirLift is currently constrained by ATAirlock rename overwrite limitations and awaits physical device end-to-end confirmation. |
 
 ---
 
@@ -32,9 +32,11 @@ This project supports all devices capable of running **iOS 27.x** (Builds `24A30
 
 ---
 
-## 📸 Empirical Visual Verification (iOS 27.0 Release)
+## 📸 Visual Verification & Simulator Renders (iOS 27.0 Release)
 
-| Control Center Dual SIM (iPhone 14 Pro, iOS 27.0) | Classic Status Bar (iPhone SE, iOS 27.0) |
+> **Note on Verification Environment**: The captures below demonstrate the layout and rendering behavior of the `StatusBarOverrides.archive` binary format validated in iOS 27 CoreSimulator environments simulating Dynamic Island (iPhone 14 Pro) and Classic Notch/Home (iPhone SE) layouts. Physical on-device deployment via AirLift is currently constrained by ATAirlock rename limitations and awaits physical hardware log confirmation.
+
+| Control Center Dual SIM (iPhone 14 Pro Layout) | Classic Status Bar (iPhone SE Layout) |
 |:---:|:---:|
 | <img src="assets/iphone14pro_controlcenter_testname.png" width="360" alt="iPhone 14 Pro iOS 27 Dual SIM Control Center" /> | <img src="assets/iphone_se_carrier_screenshot.png" width="360" alt="iPhone SE iOS 27 Carrier Screenshot" /> |
 | **Dual SIM Custom Carrier**: `[P] Testname` & `[S] Test for name` | **Single SIM Custom Carrier**: `中国广电 5G` |
@@ -200,9 +202,20 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 ## ⚠️ Primary Device Safety Guidelines
 
-1. **Hardcoded Device Blocklist**: `tools/airlift_carrier_deploy.py` strictly blocks primary daily-driver UDIDs (e.g. `00008140-001C29663062201C`), refusing any connection.
-2. **Zero `/var/preferences` Modifications**: We target only `/var/mobile/Library/SpringBoard`, completely avoiding root-level security wipes (Security State Recovery).
-3. **Pristine State Maintenance**: Books synchronization databases are snapshotted and cleanly restored after staging.
+1. **Configurable Device Blocklist**: `tools/airlift_carrier_deploy.py` supports blocking designated daily-driver UDIDs via the `AIRLIFT_BLOCKED_UDIDS` environment variable (comma-separated UDIDs), refusing any deployment attempt to protected hardware.
+2. **Strict Build Gating Option**: Setting `AIRLIFT_STRICT_BUILDS=1` enforces execution exclusively on tested iOS builds (`24A300`, `24A434`, `24A435`, `24A437`, `24A5390f`).
+3. **Target Directory Whitelist**: Path traversal in `build_streaming_zip` strictly whitelists `/var/mobile/Library/SpringBoard` to eliminate arbitrary directory write risks.
+4. **Carrier String Length Checks**: Inputs are enforced to a max length of 64 characters for carrier text and 8 characters for badges.
+5. **Zero `/var/preferences` Modifications**: We target only SpringBoard's user-owned directory (`mobile:mobile`), completely avoiding root-level security wipes (Security State Recovery).
+6. **Pristine State Maintenance**: Books synchronization databases are snapshotted and cleanly restored after staging.
+
+---
+
+## ⚠️ Known Limitations & Open Research Questions
+
+1. **ATAirlock `rename` Overwrite Constraint**: AirTraffic's `-[ATAirlock processCompletedAsset:]` relies on Cocoa's `moveItemAtPath:toPath:error:`, which returns `NSFileWriteFileExistsError` if the destination file already exists. Overwriting an existing `StatusBarOverrides.archive` without physical device reboot / self-eviction remains an active research challenge.
+2. **Physical Device End-to-End Log Verification**: While archive parsing is 100% verified on CoreSimulator, physical device confirmation across various Dynamic Island configurations requires further empirical validation.
+3. **Lock Screen Footnote Supervision**: The `com.apple.shareddeviceconfiguration` payload is an official Apple MDM schema; in certain corporate or constrained environments, displaying the footnote on the lock screen may require device supervision.
 
 ---
 

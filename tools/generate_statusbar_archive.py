@@ -27,6 +27,9 @@ NETWORK_TYPES = {
     "5g-uc": 13,
 }
 
+MAX_CARRIER_LENGTH = 64
+MAX_BADGE_LENGTH = 8
+
 def build_cellular_archive(
     primary_carrier: Optional[str] = None,
     primary_bars: int = 4,
@@ -41,6 +44,15 @@ def build_cellular_archive(
     """
     Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard.
     """
+    if primary_carrier and len(primary_carrier) > MAX_CARRIER_LENGTH:
+        raise ValueError(f"Primary carrier name exceeds maximum length of {MAX_CARRIER_LENGTH} characters.")
+    if secondary_carrier and len(secondary_carrier) > MAX_CARRIER_LENGTH:
+        raise ValueError(f"Secondary carrier name exceeds maximum length of {MAX_CARRIER_LENGTH} characters.")
+    if primary_badge and len(primary_badge) > MAX_BADGE_LENGTH:
+        raise ValueError(f"Primary badge exceeds maximum length of {MAX_BADGE_LENGTH} characters.")
+    if secondary_badge and len(secondary_badge) > MAX_BADGE_LENGTH:
+        raise ValueError(f"Secondary badge exceeds maximum length of {MAX_BADGE_LENGTH} characters.")
+
     if is_reset or (not primary_carrier and not secondary_carrier):
         # Empty record that clears overrides
         objects = [
@@ -288,10 +300,14 @@ def main():
             f.write(payload)
         print(f"[✓] Copied archive to {dest_archive}")
 
-        # Kill simulator systemstatusd and SpringBoard so cache resets
-        subprocess.run(["pkill", "-9", "-f", "systemstatusd"], stderr=subprocess.DEVNULL)
-        subprocess.run(["killall", "-9", "SpringBoard"], stderr=subprocess.DEVNULL)
-        print(f"[✓] Restarted SpringBoard and systemstatusd for simulator {sim_target}. Changes applied!")
+        # Safely reload simulator systemstatusd and SpringBoard
+        try:
+            subprocess.run(["xcrun", "simctl", "spawn", sim_target, "killall", "-9", "systemstatusd"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(["xcrun", "simctl", "spawn", sim_target, "killall", "-9", "SpringBoard"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        subprocess.run(["killall", "-9", "SpringBoard"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"[✓] Reloaded SpringBoard and systemstatusd for simulator {sim_target}. Changes applied!")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,13 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Apple Configuration Profile for Lock Screen Footnote
+  Payload Type: com.apple.shareddeviceconfiguration
+  Note on Compatibility & Supervision:
+  - This payload conforms to Apple's official Device Management schema.
+  - On standard iOS devices, installing this profile displays the footnote above the Home Bar.
+  - In certain strict corporate/enterprise policies or iOS sub-builds, some SharedDeviceConfiguration
+    keys may require Supervision (Apple Configurator / MDM enrollment).
+  - Removal: Settings -> General -> VPN & Device Management -> Select profile -> Remove.
+-->
 <plist version="1.0">
 <dict>
 	<key>PayloadContent</key>

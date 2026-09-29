@@ -8,33 +8,46 @@ to any compatible iPhone (Dynamic Island or Classic) running iOS 27.x without ja
 from __future__ import annotations
 
 import argparse
-import hashlib
 import io
 import json
 import os
 import plistlib
 import posixpath
-import re
 import secrets
 import stat
 import struct
 import subprocess
 import sys
 import tempfile
-import time
 import zipfile
 from pathlib import Path
 from typing import Any, Optional
 
 ROOT = Path(__file__).resolve().parent
-TARGET_HEADER = ROOT / "Sources" / "airlift_target.h"
-DEVICE_HELPER = ROOT / "build" / "device_helper"
-AIRTRAFFIC_HOST = ROOT / "build" / "airtraffic_host"
+
+# Locate airlift directory whether script is executed from airlift/ or tools/
+if (ROOT / "Sources").is_dir():
+    AIRLIFT_DIR = ROOT
+elif (ROOT.parent / "airlift" / "Sources").is_dir():
+    AIRLIFT_DIR = ROOT.parent / "airlift"
+else:
+    AIRLIFT_DIR = ROOT
+
+TARGET_HEADER = AIRLIFT_DIR / "Sources" / "airlift_target.h"
+DEVICE_HELPER = AIRLIFT_DIR / "build" / "device_helper"
+AIRTRAFFIC_HOST = AIRLIFT_DIR / "build" / "airtraffic_host"
 
 DEFAULT_TARGET = "/var/mobile/Library/SpringBoard"
 TARGET_LEAF = "StatusBarOverrides.archive"
 AIRLOCK_ROOT = "/var/mobile/Media/Airlock/Book"
 SZ_EXTRA_ID = 0x5A53
+
+ALLOWED_TARGET_PREFIXES = (
+    "/var/mobile/Library/SpringBoard",
+)
+
+MAX_CARRIER_LENGTH = 64
+MAX_BADGE_LENGTH = 8
 
 NETWORK_TYPES = {
     "none": 0,
@@ -71,6 +84,15 @@ def build_cellular_archive(
     """
     Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard.
     """
+    if primary_carrier and len(primary_carrier) > MAX_CARRIER_LENGTH:
+        raise AirLiftCarrierError(f"Primary carrier name exceeds maximum length of {MAX_CARRIER_LENGTH} characters.")
+    if secondary_carrier and len(secondary_carrier) > MAX_CARRIER_LENGTH:
+        raise AirLiftCarrierError(f"Secondary carrier name exceeds maximum length of {MAX_CARRIER_LENGTH} characters.")
+    if primary_badge and len(primary_badge) > MAX_BADGE_LENGTH:
+        raise AirLiftCarrierError(f"Primary badge exceeds maximum length of {MAX_BADGE_LENGTH} characters.")
+    if secondary_badge and len(secondary_badge) > MAX_BADGE_LENGTH:
+        raise AirLiftCarrierError(f"Secondary badge exceeds maximum length of {MAX_BADGE_LENGTH} characters.")
+
     if is_reset or (not primary_carrier and not secondary_carrier):
         objects = [
             "$null",
@@ -234,7 +256,15 @@ def zip_info(name: str, mode: int) -> zipfile.ZipInfo:
 
 
 def build_streaming_zip(target: str, payload: bytes) -> bytes:
-    target_tail = target[1:]
+    normalized_target = posixpath.normpath(target)
+    if not any(
+        normalized_target == allowed or normalized_target.startswith(allowed + "/")
+        for allowed in ALLOWED_TARGET_PREFIXES
+    ):
+        raise AirLiftCarrierError(
+            f"Security Violation: Target path '{target}' is not in allowed SpringBoard targets: {ALLOWED_TARGET_PREFIXES}"
+        )
+    target_tail = normalized_target.lstrip("/")
     metadata = plistlib.dumps(
         {"Version": 2}, fmt=plistlib.FMT_BINARY, sort_keys=True
     )
@@ -307,9 +337,14 @@ def operation_ok(result: dict[str, Any]) -> bool:
     )
 
 
-PRIMARY_PHONE_BLOCKLIST = frozenset([
-    "00008140-001C29663062201C",  # User's primary iPhone 16 Pro Max
-])
+# Device blocklist to protect designated primary daily drivers from accidental deployment.
+# Configure by setting the AIRLIFT_BLOCKED_UDIDS environment variable (comma-separated UDIDs).
+_ENV_BLOCKLIST = [
+    udid.strip()
+    for udid in os.environ.get("AIRLIFT_BLOCKED_UDIDS", "").split(",")
+    if udid.strip()
+]
+PRIMARY_PHONE_BLOCKLIST = frozenset(_ENV_BLOCKLIST)
 
 
 def query_connected_devices() -> list[dict[str, Any]]:
@@ -447,6 +482,8 @@ def deploy_carrier(
         probe = native("probe", udid)
         if not operation_ok(probe):
             raise AirLiftCarrierError("Device preflight probe failed", {"probe": probe})
+        if not probe.get("targetTested"):
+            print("[!] CAUTION: Device iOS build is NOT in the tested builds list (AIRLIFT_TESTED_BUILDS). Proceeding with caution...", file=sys.stderr)
 
         print("[*] Preserving Books database state...", flush=True)
         snapshot = native("snapshot-books", udid, os.fspath(snapshot_root))

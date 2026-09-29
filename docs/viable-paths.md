@@ -51,3 +51,11 @@
 - **现状：** 极高风险 / 需环境验证。
 - **背景：** `bad_query` 在 iOS 27 Beta 1-4 上曾有沙箱逃逸写原语，但在 Release 正式版上 Apple 已修复 ContainerManager / HouseArrest 逻辑。
 - **原则：** 主力设备坚决禁止直接运行未经 Release 验证的 PoC。
+
+### 2.5 路线 5：现代 `StatusBarOverrides.archive` + AirLift 管道
+- **现状：** **模拟器验证通过 / 物理真机待实证 (`Hypothesis / Unconfirmed on Physical Devices`)**。
+- **机制：** SpringBoard 内置 `SBSystemStatusStatusBarOverridesArchiver`，会从 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 反序列化 `STStatusBarData`。
+- **可行性与实测挑战：**
+  - **模拟器环境：** 宿主可直接写入该路径，重启 SpringBoard 后成功生效，已验证 Single SIM 与 Dual SIM 渲染。
+  - **物理真机环境：** 该文件物理路径属主为 `mobile:mobile`，在 AirLift 的 AirTraffic 沙箱逃逸允许写入域内。但目前核心卡点在于 AirTraffic ATAirlock 底层采用 `rename` 移动资产，当目标文件已存在时会失败（`NSFileWriteFileExistsError`），首次部署与后续更新/重置的平滑覆盖机制尚未在物理真机（Build 24A437）上获得端到端实测日志支持。
+  - **当前结论：** 属于当前最有希望的路线，但不能视为物理真机已验证的既成事实，需进一步在受控测试机上突破文件覆盖问题。

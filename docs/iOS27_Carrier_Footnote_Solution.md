@@ -13,8 +13,8 @@
 
 | 定制目标 | 裁决状态 | 标签 | 核心结论与技术原因 |
 |---|---|---|---|
-| **Lock Screen Footnote** | **完全可行** | `Confirmed` | 属于 Apple 官方设备管理体系（`com.apple.shareddeviceconfiguration`）。可通过官方 `.mobileconfig` 描述文件或受保护备份注入（Manifest.db 注入）在 iOS 27.0 Final 上稳定生效，无需任何越狱或高危提权。 |
-| **Carrier Name Override** | **重大突破 (架构升级可行)** | `Verified` | **经 iOS 27 动态逆向与虚拟机实测证实可行**！旧工具失败的根源在于写入了已被 iOS 27 弃用的旧版 3944 字节 C 结构体（`statusBarOverrides`）。iOS 27 采用现代 `NSKeyedArchiver` 归档文件 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive`。SpringBoard 原生通过 `SBSystemStatusStatusBarOverridesArchiver` 解析该归档并发布给 `SystemStatusUI`。该文件属主为 `mobile:mobile`，AirLift 的 AirTraffic 路径逃逸可直接触达，无需 root 权限或 FeatureFlags 修改！ |
+| **Lock Screen Footnote** | **完全可行** | `Confirmed` | 属于 Apple 官方设备管理体系（`com.apple.shareddeviceconfiguration`）。可通过官方 `.mobileconfig` 描述文件或受保护备份注入（Manifest.db 注入）在 iOS 27.0 Final 上稳定生效，无需任何越狱或高危提权。（注：部分特定环境可能要求监督模式）。 |
+| **Carrier Name Override** | **重大发现 (物理待实证)** | `Hypothesis (Simulator Verified, Physical Unconfirmed)` | **经 iOS 27 动态逆向与虚拟机实测证实格式有效**！旧工具失败根源在于写入了已被 iOS 27 弃用的旧版 3944 字节 C 结构体（`statusBarOverrides`）。iOS 27 采用现代 `NSKeyedArchiver` 归档文件 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive`。SpringBoard 原生通过 `SBSystemStatusStatusBarOverridesArchiver` 解析该归档并发布给 `SystemStatusUI`。该文件属主为 `mobile:mobile`，在 AirLift 允许写入域内。**但物理真机部署受限于 AirTraffic ATAirlock 的 rename 覆盖限制（无法简单覆盖已存在文件），物理真机端到端链路仍需实测验证，不可断言为全量既成事实**。 |
 
 ---
 
@@ -229,8 +229,8 @@
 ## 16. Device Compatibility (设备兼容性评估)
 
 - **iPhone 16 Pro Max / A18 Pro (24A437)**：
-  - Lock Screen Footnote：**100% 兼容支持**。
-  - Carrier Name Override：**在当前 24A437 正式版上非越狱不可行**。
+  - Lock Screen Footnote：**100% 兼容支持**（基于官方配置描述文件规范；部分特定策略若需监督模式可配合 Configurator）。
+  - Carrier Name Override：**模拟器验证通过，物理真机处于实验验证阶段 (`Hypothesis / Unconfirmed on Physical Devices`)**。核心挑战在于 ATAirlock 文件覆盖限制与物理机 AirTraffic 同步管道稳定性。
 - **A18 Pro 硬件安全特性**：硬件级强化了 PAC 与 PPL，排除了纯用户态内存盲喷修改 SpringBoard 的可能性。
 
 ---
@@ -329,12 +329,13 @@
 
 ## 21. Final Conclusion (技术裁决与总结)
 
-1. **对 Carrier Name 的裁决（重大突破）**：
+1. **对 Carrier Name 的裁决（重大突破但真机待实证）**：
    在 **iOS 27.0 Release (24A437)** 上，经过 CoreSimulator 运行时逆向反汇编与动态注入验证，证实 **Carrier Name 可以通过现代持久化归档生效**：
    - 过去开源社区（GoldenNugget 等）写入已被废弃的 3944 字节旧 C 结构体（`statusBarOverrides`），导致 SpringBoard 无法识别并误以为被 Speakeasy 彻底封杀。
    - 真实有效的新载荷格式为 `NSKeyedArchiver` 序列化的 `StatusBarOverrides.archive`，内含 `_SBSystemStatusStatusBarOverridesArchiveRecord` 与 `STStatusBarDataCellularEntry`。
    - 物理路径 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 属主为 `mobile:mobile`，在 **AirLift（AirTraffic Books 逃逸管道）** 的允许写入域内，无需提权至 root，亦无需改动 `FeatureFlags`。
+   - **关键限制与客观真实性**：物理设备部署受限于 ATAirlock 使用的 rename 机制（无法直接覆盖已存在的目标文件）。因此在物理真机上的端到端部署与回滚机制仍需进一步实测，当前结论定级为 `Hypothesis (Simulator Verified, Physical Device Unconfirmed)`。
    - 已编写标准载荷生成工具 `tools/generate_statusbar_archive.py`，可在安全隔离环境下完成一键生成与打包验证。
 
 2. **对 Lock Screen Footnote 的裁决（完全可行）**：
-   无需越狱，无需依赖任何漏洞工具，利用 Apple 官方的 `com.apple.shareddeviceconfiguration` 体系即可稳定、安全、优雅地达成 100% 定制目标。通过官方 `.mobileconfig` 描述文件安装即可立竿见影。
+   无需越狱，无需依赖任何漏洞工具，利用 Apple 官方的 `com.apple.shareddeviceconfiguration` 体系即可稳定、安全、优雅地达成 100% 定制目标。通过官方 `.mobileconfig` 描述文件安装即可立竿见影（部分受限/企业设备可配合 Supervised 监督模式）。
