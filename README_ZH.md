@@ -3,8 +3,8 @@
 [English](README.md) | [简体中文](README_ZH.md)
 
 [![iOS 27 兼容](https://img.shields.io/badge/iOS-27.x%20Final-blue.svg)](https://apple.com/ios)
-[![实现途径](https://img.shields.io/badge/%E6%96%B9%E6%A1%88-%E5%85%8D%E8%B6%8A%E7%8B%B1%20%7C%20Backup%20%2B%20AirLift-success.svg)](#-上游合并与实机落地验证-upstream-adoption)
-[![实测状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-%E5%B7%B2%E9%AA%8C%E8%AF%81%20%7C%20GoldenNugget%20%E5%AE%98%E6%96%B9%E9%87%87%E7%BA%B3-brightgreen.svg)](#-上游合并与实机落地验证-upstream-adoption)
+[![实现途径](https://img.shields.io/badge/%E6%96%B9%E6%A1%88-%E5%85%8D%E8%B6%8A%E7%8B%B1%20%7C%20Backup%20%2B%20AirLift-success.svg)](#-上游合并与当前验证状态-upstream-adoption)
+[![实测状态](https://img.shields.io/badge/%E7%8A%B6%E6%80%81-GoldenNugget%20%E5%AE%98%E6%96%B9%E9%9B%86%E6%88%90%20%7C%20%E7%9C%9F%E6%9C%BA%E5%BE%85%E5%AE%9E%E8%AF%81-yellow.svg)](#-上游合并与当前验证状态-upstream-adoption)
 [![适配设备](https://img.shields.io/badge/%E8%AE%BE%E5%A4%87-%E5%85%A8%E6%9C%BA%E5%9E%8B%E9%80%9A%E7%94%A8%20(%E7%81%B5%E5%8A%A8%E5%B2%9B%20%2B%20%E7%BB%8F%E5%85%B8%E5%B1%8F)-orange.svg)](#-通用硬件与状态栏适配矩阵)
 
 > 面向 **所有 iOS 27.x 设备**（涵盖灵动岛全系与经典刘海/Home键机型）的通用型、免越狱底层逆向工程研究框架与自动化工具链，支持持久化定制 **蜂窝网络运营商名称 (Carrier Name)**（单卡/双卡）与 **锁屏底部脚注 (Lock Screen Footnote)**。
@@ -16,7 +16,7 @@
 | 定制目标 | iOS 27.x 状态 | 核心实现机制 | 适用性与范围 |
 |---|---|---|---|
 | **锁屏底部脚注 (Footnote)** | 🟢 **完全可用** | `com.apple.shareddeviceconfiguration` 体系下的 `SharedDeviceConfiguration.plist` | **全机型通用 (100%)** — Apple 官方标准描述文件 (`.mobileconfig`) 通道或通过 `SysSharedContainerDomain` 保护性备份注入。完全零风险、免越狱（部分企业/受限设备可能要求监督模式）。 |
-| **运营商名称覆写 (Carrier Name)** | 🟢 **实测验证 (上游官方合并)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **全机型通用 (备份恢复 & AirLift)** — 已被主流定制套件 [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) 正式合并 ([Commit `55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4))。该归档文件归属 `HomeDomain`，在真机上可通过标准 MobileBackup2 备份恢复管道无缝写入，彻底绕过了 AirTraffic 的 rename 覆盖限制！ |
+| **运营商名称覆写 (Carrier Name)** | 🟡 **理论验证 / 上游官方集成** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **GoldenNugget 官方集成 (真机待实证)** — 已被主流定制套件 [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) 正式采纳并集成 ([Commit `55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4))。已通过 iOS 27 CoreSimulator 与离线单元测试验证。注：通过真实备份恢复或 AirLift 在物理真机硬件上的端到端实证仍处于待实测状态。 |
 
 ---
 
@@ -32,20 +32,23 @@
 
 ---
 
-## 🚀 上游合并与实机落地验证 (Upstream Adoption)
+## 🚀 上游合并与当前验证状态 (Upstream Adoption)
 
 本项目对 `SBSystemStatusStatusBarOverridesArchiver` 的逆向工程突破，彻底打破了社区过去“Speakeasy 彻底封杀 iOS 27 状态栏”的定论：
 
 1. **GoldenNugget 官方主线合并**：[GoldenNugget-Team/GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) 已在 Commit [`55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4) 中正式采纳本仓库研究成果：
    > *"The status bar was dead on iOS 27 because it was assumed to be gated behind the SpeakeasyNewStatusBar feature flag... SpringBoard unarchives its own file at startup... Format validated against simulator-verified reference archives: https://github.com/Prognosticate-X/ios27-carrier-lockscreen-research"*
-2. **真机交付途径完美闭环**：GoldenNugget 团队发现 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 属于标准 `HomeDomain`。因此在物理真机上直接通过系统标准的普通备份恢复（MobileBackup2）即可安全投递，**彻底绕过了 AirTraffic ATAirlock 的 rename 覆盖报错问题**！
-3. **物理真机实测通过**：GoldenNugget 核心维护者 `@awesomenull-dev` 已在物理硬件上完成测试验证，并在本仓库 [Issue #1](https://github.com/Prognosticate-X/ios27-carrier-lockscreen-research/issues/1) 中反馈确认：`carrier override tested and added into goldenugget`。
+2. **极具前景的 HomeDomain 备份恢复途径**：GoldenNugget 团队发现 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 属于标准 `HomeDomain`。因此可通过标准 MobileBackup2 备份恢复管道投递，有望彻底规避 AirTraffic 的 rename 覆盖限制！
+3. **当前客观验证状态**：
+   - ✅ **CoreSimulator 模拟器**：100% 验证通过（SpringBoard 原生解析归档并正确渲染）。
+   - ✅ **离线单元测试**：GoldenNugget 开发者通过编写离线测试套件 `tools/test_statusbar_archive.py` 验证了数据结构生成与解析逻辑。
+   - ⚠️ **物理真机实测**：GoldenNugget 在 Commit 说明与官方文档 [`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md) 中明确标注 **`Not yet verified on physical hardware`**（尚未在物理硬件上验证）。物理真机端到端落地仍是两个项目共同面向的待验证课题。
 
 ---
 
 ## 📸 视觉证据与模拟器渲染 (iOS 27.0 Release)
 
-> **实测环境说明**：以下视觉截图展示了 `StatusBarOverrides.archive` 现代归档载荷在 iOS 27 CoreSimulator 模拟环境（包含灵动岛与传统状态栏布局）中的实际渲染效果。物理真机支持直接通过 GoldenNugget 备份恢复管道无缝应用，或通过独立的 AirLift 管道部署。
+> **实测环境说明**：以下视觉截图展示了 `StatusBarOverrides.archive` 现代归档载荷在 iOS 27 CoreSimulator 模拟环境（包含灵动岛与传统状态栏布局）中的实际渲染效果。物理真机架构上支持通过 GoldenNugget 备份恢复管道或独立的 AirLift 管道部署（物理硬件实测仍在推进中）。
 
 | 灵动岛机型控制中心双卡渲染 (iPhone 14 Pro 布局) | 经典状态栏单卡渲染 (iPhone SE 布局) |
 |:---:|:---:|
@@ -228,8 +231,8 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 ## ⚠️ 已知限制与待攻克难点 (Known Limitations)
 
-1. **ATAirlock `rename` 覆盖限制 (AirLift 单独通道特有)**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。*(注：若通过 GoldenNugget 的 `HomeDomain` 备份恢复管道投递，此限制被完全规避)*。
-2. **物理真机实机验证**：已通过 GoldenNugget 主线的 `HomeDomain` 备份管道在物理真机硬件上实测通过。独立 AirLift 重复写入仍依赖干净基线或空归档自删自愈。
+1. **物理真机端到端落地实测**：如本仓库与 GoldenNugget 官方文档所共同明确标注，归档反序列化与渲染逻辑已在 CoreSimulator 上严格验证，但在物理真机硬件上通过真实备份恢复或 AirLift 的端到端测试仍处于待实证状态（等待真机运行日志与截图闭环）。
+2. **ATAirlock `rename` 覆盖限制 (AirLift 单独通道特有)**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。*(注：理论上通过 GoldenNugget 的 `HomeDomain` 备份恢复管道投递可规避此限制，尚待真机实证)*。
 3. **锁屏脚注监督模式考量**：`com.apple.shareddeviceconfiguration` 属于 Apple 官方 MDM 规范；在特定受限企业策略或特定子版本中，系统可能要求设备处于 Supervised 监督模式才能展示锁屏脚注。
 
 ---
