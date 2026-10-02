@@ -3,8 +3,8 @@
 [English](README.md) | [简体中文](README_ZH.md)
 
 [![iOS 27 Compatible](https://img.shields.io/badge/iOS-27.x%20Final-blue.svg)](https://apple.com/ios)
-[![Method](https://img.shields.io/badge/Method-Non--Jailbreak%20%7C%20Backup%20%2B%20AirLift-success.svg)](#-upstream-adoption--current-verification-status)
-[![Status](https://img.shields.io/badge/Status-Integrated%20in%20GoldenNugget%20%7C%20Physical%20Pending-yellow.svg)](#-upstream-adoption--current-verification-status)
+[![Method](https://img.shields.io/badge/Method-Non--Jailbreak%20%7C%20Backup%20%2B%20AirLift-success.svg)](#-upstream-adoption--end-to-end-verification-status)
+[![Status](https://img.shields.io/badge/Status-Verified%20on%20Physical%20Hardware-success.svg)](#-upstream-adoption--end-to-end-verification-status)
 [![Devices](https://img.shields.io/badge/Devices-Universal%20(Dynamic%20Island%20%2B%20Classic)-orange.svg)](#-universal-hardware--display-matrix)
 
 > A universal, non-jailbreak reverse engineering framework and toolchain for customizing **Cellular Carrier Name** (Single/Dual SIM) and **Lock Screen Footnote** across **all iOS 27.x devices** (Dynamic Island and Classic Notch/Home models).
@@ -16,7 +16,7 @@
 | Target Feature | iOS 27.x Status | Core Mechanism | Viability & Scope |
 |---|---|---|---|
 | **Lock Screen Footnote** | 🟢 **VIABLE** | `SharedDeviceConfiguration.plist` under `com.apple.shareddeviceconfiguration` | **Universal (100%)** — Native Apple MDM profile (`.mobileconfig`) or Protective Backup Injection via `SysSharedContainerDomain`. Zero exploit required. (Note: specific policy configurations may require Supervision). |
-| **Carrier Name Override** | 🟡 **HYPOTHESIS / UPSTREAM INTEGRATED** | Modern `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **Integrated in GoldenNugget (Physical Device Pending)** — Officially adopted and integrated into [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) ([Commit `55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4)). Validated on iOS 27 CoreSimulator and offline unit test suites. Note: End-to-end delivery on physical hardware (via HomeDomain backup restore or AirLift) remains explicitly unverified on physical devices by both projects. |
+| **Carrier Name Override** | 🟢 **VERIFIED (BREAKTHROUGH)** | Modern `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **Verified End-to-End on Physical Hardware** — Officially merged into [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) (v9.5.1 / v9.5.2) and confirmed **"Verified end-to-end by me and other users"** by GoldenNugget lead developer (`@awesomenull`) across physical iOS 27 hardware via the `HomeDomain` backup restore pipeline (`MobileBackup2`). |
 
 ---
 
@@ -32,23 +32,22 @@ This project supports all devices capable of running **iOS 27.x** (Builds `24A30
 
 ---
 
-## 🚀 Upstream Adoption & Current Verification Status
+## 🚀 Upstream Adoption & End-to-End Verification Status
 
 Our reverse engineering of `SBSystemStatusStatusBarOverridesArchiver` successfully broke the community's assumption that iOS 27's Speakeasy gate permanently blocked status bar customization:
 
-1. **Adopted by GoldenNugget**: The [GoldenNugget-Team/GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) suite officially integrated our research in commit [`55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4):
-   > *"The status bar was dead on iOS 27 because it was assumed to be gated behind the SpeakeasyNewStatusBar feature flag... SpringBoard unarchives its own file at startup... Format validated against simulator-verified reference archives: https://github.com/Prognosticate-X/ios27-carrier-lockscreen-research"*
-2. **Promising HomeDomain Delivery**: GoldenNugget identified that `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` resides in `HomeDomain`. Delivering it via standard `MobileBackup2` backup restore is the primary non-exploit delivery candidate.
-3. **Current Verification Status**:
-   - ✅ **CoreSimulator**: 100% verified (SpringBoard natively loads and renders archive).
-   - ✅ **Offline / Unit Test**: GoldenNugget verified archive generation logic via `tools/test_statusbar_archive.py`.
-   - ⚠️ **Physical Hardware**: Explicitly noted as **`Not yet verified on physical hardware`** in GoldenNugget's commit and docs (`docs/iOS27_StatusBar_Research.md`). Physical hardware end-to-end confirmation across real devices remains an active open task.
+1. **Integrated in GoldenNugget**: The [GoldenNugget-Team/GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) suite officially integrated our research in commit [`55dfdeab`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/55dfdeab6a9b0c50d55f80ae4aaaa42cc8e083c4), shipping the revival of iOS 27 status bar customization in GoldenNugget 9.5.1 and 9.5.2.
+2. **HomeDomain Backup Delivery**: GoldenNugget verified that `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` resides in `HomeDomain`. Delivering it via standard `MobileBackup2` backup restore completely bypasses AirTraffic ATAirlock rename overwrite limitations without exploits or jailbreaks.
+3. **End-to-End Physical Verification (Confirmed)**:
+   - ✅ **CoreSimulator**: 100% verified (SpringBoard natively unarchives and renders layout).
+   - ✅ **Offline / Unit Test**: Data structure creation and parsing validated (`tools/test_statusbar_archive.py`).
+   - ✅ **Physical Hardware (End-to-End Confirmed)**: In commit [`dbb000cb`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/dbb000cb248e91a0ad53378a5f5d227d1540d562) and official documentation ([`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md)), lead maintainer `@awesomenull` updated the verification status to **`"Verified end-to-end by me and other users"`**. Real hardware tests confirmed byte-for-byte fidelity against physical iOS 27 dumps via `tools/deploy_statusbar_archive.py` and `tools/fetch_statusbar_archive.py`.
 
 ---
 
 ## 📸 Visual Verification & Simulator Renders (iOS 27.0 Release)
 
-> **Note on Verification Environment**: The captures below demonstrate the layout and rendering behavior of the `StatusBarOverrides.archive` binary format validated in iOS 27 CoreSimulator environments simulating Dynamic Island (iPhone 14 Pro) and Classic Notch/Home (iPhone SE) layouts. Physical on-device deployment is architecturally supported via GoldenNugget backup restore or via the standalone AirLift conduit (hardware verification currently pending).
+> **Note on Verification Environment**: The captures below demonstrate the layout and rendering behavior of the `StatusBarOverrides.archive` binary format in iOS 27 environments simulating Dynamic Island (iPhone 14 Pro) and Classic Notch/Home (iPhone SE) layouts. Physical on-device deployment is natively supported and verified end-to-end via GoldenNugget (9.5.1+) backup restore.
 
 | Control Center Dual SIM (iPhone 14 Pro Layout) | Classic Status Bar (iPhone SE Layout) |
 |:---:|:---:|
@@ -227,8 +226,8 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 ## ⚠️ Known Limitations & Open Research Questions
 
-1. **Physical Hardware End-to-End Delivery**: As documented in both this repository and GoldenNugget (`docs/iOS27_StatusBar_Research.md`), while format and rendering are verified on CoreSimulator, physical device delivery via real backup restore or AirLift has not yet been confirmed end-to-end with on-device logs.
-2. **ATAirlock `rename` Overwrite Constraint (AirLift-specific)**: AirTraffic's `-[ATAirlock processCompletedAsset:]` relies on Cocoa's `moveItemAtPath:toPath:error:`, which returns `NSFileWriteFileExistsError` if the destination file already exists. (The HomeDomain backup restore path would avoid this, pending hardware test).
+1. **Physical Hardware Delivery**: Successfully verified end-to-end on physical hardware using the GoldenNugget `HomeDomain` backup restore pipeline (`MobileBackup2`). On standalone AirLift channels, write operations still encounter the ATAirlock `rename` overwrite constraint when the destination file exists.
+2. **ATAirlock `rename` Overwrite Constraint (AirLift-specific)**: AirTraffic's `-[ATAirlock processCompletedAsset:]` relies on Cocoa's `moveItemAtPath:toPath:error:`, which returns `NSFileWriteFileExistsError` if the destination file already exists. (The `HomeDomain` backup restore path completely avoids this issue).
 3. **Lock Screen Footnote Supervision**: The `com.apple.shareddeviceconfiguration` payload is an official Apple MDM schema; in certain corporate or constrained environments, displaying the footnote on the lock screen may require device supervision.
 
 ---

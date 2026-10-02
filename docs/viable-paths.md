@@ -53,9 +53,9 @@
 - **原则：** 主力设备坚决禁止直接运行未经 Release 验证的 PoC。
 
 ### 2.5 路线 5：现代 `StatusBarOverrides.archive` 归档管道
-- **现状：** **已获主流开源套件（GoldenNugget）主线正式合并，CoreSimulator/离线单元测试验证通过，物理真机端到端待实证**。
+- **现状：** **已获主流开源套件（GoldenNugget）主线正式合并并发布（v9.5.1/v9.5.2），物理真机端到端全量实测验证通过（Verified end-to-end by developer and users）**。
 - **机制：** SpringBoard 内置 `SBSystemStatusStatusBarOverridesArchiver`，会从 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 反序列化 `STStatusBarData` 并发布至 `SystemStatusUI`。
 - **交付途径：**
-  - **途径 A（GoldenNugget HomeDomain 备份恢复管道，推荐）：** 该归档文件归属 `HomeDomain`，可通过标准 `MobileBackup2` 备份恢复直接送入系统，无须越狱或漏洞逃逸，且彻底绕过了 AirTraffic 的 rename 覆盖限制。已被 GoldenNugget 主线合并（Commit `55dfdeab`），理论上可实现无缝写入，物理真机恢复实测仍在推进中。
+  - **途径 A（GoldenNugget HomeDomain 备份恢复管道，官方推荐）：** 该归档文件归属 `HomeDomain`，可通过标准 `MobileBackup2` 备份恢复直接送入系统，无须越狱或漏洞逃逸，且彻底绕过了 AirTraffic 的 rename 覆盖限制。已被 GoldenNugget 主线合并（v9.5.1+）并在物理真机硬件上全量测试通过。
   - **途径 B（AirLift 独立通道）：** 通过 AirTraffic Books 同步管道写入，受限于 ATAirlock rename 覆盖限制，需依赖首次安装或空归档自删复位机制。
   - **途径 C（CoreSimulator 模拟器）：** 宿主直写，格式反序列化与状态栏 UI 渲染均已实测验证通过。
