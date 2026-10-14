@@ -142,7 +142,7 @@ python3 tools/airlift_carrier_deploy.py -c "中国广电 5G" --dry-run
 ## 5. 安全准则与阻断策略
 
 1. **主力机绝对阻断**：
-   - 宿主机工具强制内置 `PRIMARY_PHONE_BLOCKLIST`（`00008140-001C29663062201C`）。
+   - 宿主机工具强制内置 `PRIMARY_PHONE_BLOCKLIST`。
    - 无论自动扫描还是手工 `--device` 指定，凡涉及主力机一律触发异常并终止运行，零接触、零操作。
 2. **非特权目录防范**：
    - 操作目标严格限制为 `mobile:mobile` 权限的 `/var/mobile/Library/SpringBoard`，坚决不写入 root 拥有的 `/var/preferences`，彻底规避 iOS 27 Security State Recovery Wipe。
