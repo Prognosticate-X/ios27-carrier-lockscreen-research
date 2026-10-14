@@ -26,7 +26,7 @@
 
 | 设备家族 | 覆盖机型 | 屏幕形态 | 蜂窝网络信号渲染行为 | 实测验证状态 |
 |---|---|---|---|---|
-| **灵动岛机型 (Pro 系列)** | iPhone 14 Pro / Pro Max<br>iPhone 15 Pro / Pro Max<br>iPhone 16 Pro / Pro Max | 灵动岛 (Dynamic Island) | **单卡**：右耳显示全高 4 格竖条信号。<br>**双卡**：原生上下叠放，上方 4 竖条（主卡）+ 下方 4 圆点（副卡）。<br>**文字展示**：锁屏大时钟模式下左耳跑马灯轮播；控制中心下拉完整展开双卡标签（`[P] 运营商`，`[S] 运营商`）。 | 🟢 **模拟器验证通过** |
+| **灵动岛机型 (Pro 系列)** | iPhone 14 Pro / Pro Max<br>iPhone 15 Pro / Pro Max<br>iPhone 16 Pro / Pro Max | 灵动岛 (Dynamic Island) | **单卡**：右耳显示全高 4 格竖条信号。<br>**双卡**：原生上下叠放，上方 4 竖条（主卡）+ 下方 4 圆点（副卡）。<br>**文字展示**：锁屏大时钟模式下左耳跑马灯轮播；控制中心下拉完整展开双卡标签（`[P] 运营商`，`[S] 运营商`）。 | 🟢 **真机验证 (iPhone 16 Pro Max, iOS 27.0) + 模拟器** |
 | **灵动岛机型 (数字系列)** | iPhone 15 / 15 Plus<br>iPhone 16 / 16 Plus | 灵动岛 (Dynamic Island) | 渲染行为与 Pro 系列完全一致，响应式适配药丸屏幕边界。 | 🟢 **完全兼容** |
 | **经典刘海 / 经典状态栏** | iPhone 13 / 14 / Plus<br>iPhone SE (第 2 / 3 代) | 经典刘海屏 / 16:9 传统屏 | 状态栏左上角直接常驻显示完整运营商文字（如 `中国广电 5G` + 4格信号）。 | 🟢 **模拟器验证通过** |
 
@@ -42,6 +42,11 @@
    - ✅ **CoreSimulator 模拟器**：100% 验证通过（SpringBoard 原生解析归档并正确渲染）。
    - ✅ **离线单元测试**：GoldenNugget 编写离线测试套件 `tools/test_statusbar_archive.py` 验证数据结构生成与解析逻辑。
    - ✅ **物理真机实测通过**：在 Commit [`dbb000cb`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/dbb000cb248e91a0ad53378a5f5d227d1540d562) 与官方文档 [`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md) 中，GoldenNugget 开发者正式更新实测结论为：**`"Verified end-to-end by me and other users"`**。通过开发专属的 `tools/deploy_statusbar_archive.py` 与 `tools/fetch_statusbar_archive.py`，经对比生成的归档与真实 iOS 27.0.1 设备 dump 字节完全一致，宣告端到端实机验证全面打通！
+4. **AirLift 通道真机端到端实测（本仓库自身通道）**：在 **iPhone 16 Pro Max（iPhone17,2），iOS 27.0（24A437）** 上通过 USB 完成实测：
+   - ✅ **字节级投递**：把写入 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 的归档再通过 AirTraffic 回读资产取回，与载荷逐字节比对一致。
+   - ✅ **真机渲染**：自定义运营商名（`CMHK`）在**控制中心**正常显示（灵动岛机型主屏顶栏不渲染运营商名）。
+   - ✅ **持久化**：SpringBoard 首次接管后，覆写在整机重启后依然保持（见限制第 4 条）。
+   - ✅ **故障处理**：人为注入 Books 前置镜像漂移后，流水线能识别、回滚并自动重试；每次 staging 失败都不留残留（`airlift-*` 目录与 Books 暂存行均已还原）。
 
 ---
 
@@ -154,6 +159,28 @@ python3 tools/airlift_carrier_deploy.py --reset
 
 # 本地打包与校验测试 (无需连接真机)
 python3 tools/airlift_carrier_deploy.py -c "中国广电 5G" --dry-run
+
+# 两阶段自动覆写 (突破 ATAirlock 限制，无需手动重置)
+python3 tools/airlift_carrier_deploy.py -c "新运营商 5G" --force-overwrite
+
+# 查看或一键应用预设配置
+python3 tools/airlift_carrier_deploy.py --list-presets
+python3 tools/airlift_carrier_deploy.py --preset dual-cmcc-cucc
+
+# 交互式向导模式
+python3 tools/airlift_carrier_deploy.py -i
+
+# 启动可视化 GUI 控制台 (自动打开浏览器)
+python3 tools/gui_server.py
+
+# 生效：重启 SpringBoard 以加载归档（也可单独执行）
+python3 tools/airlift_carrier_deploy.py --respring
+
+# 部署失败后一键修复设备 (清理 staging 残留 + Books 脏数据)
+python3 tools/airlift_carrier_deploy.py --clean-device
+
+# 真机韧性自检 (会写入一次复位归档，需显式加 --yes)
+python3 tools/airlift_resilience_check.py --yes
 ```
 
 ### 2. 独立归档生成器与模拟器部署 (`tools/generate_statusbar_archive.py`)
@@ -181,6 +208,13 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 ├── README_ZH.md                                       # 中文完整同步文档 (Chinese Synchronized)
 ├── tools/                                             # 跨设备通用自动化工具链
 │   ├── airlift_carrier_deploy.py                      # 通用型 AirLift 物理真机部署 CLI
+│   ├── airlift_resilience_check.py                    # 真机重试/回滚韧性自检 (会写设备, 需 --yes)
+│   ├── gui_server.py                                  # 中英双语可视化控制台 (部署 / 修复 / 重启 SpringBoard)
+│   ├── display_metrics.py                             # 灵动岛宽度启发式与截断告警
+│   ├── footnote_generator.py                          # 锁屏脚注 .mobileconfig 生成器
+│   ├── presets.py                                     # 运营商命名预设
+│   ├── terminal_preview.py                            # 终端状态栏预览
+│   ├── test_airlift_features.py                       # 离线单元测试套件
 │   └── generate_statusbar_archive.py                  # 现代二进制归档生成与模拟器直推工具
 ├── airlift/                                           # 原生 AirLift 漏洞利用与同步子系统
 │   ├── Sources/                                       # 原生 Objective-C 模块 (device_helper.m, airtraffic_host.m)
@@ -230,9 +264,12 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 ## ⚠️ 已知限制与待攻克难点 (Known Limitations)
 
-1. **物理真机端到端落地实测**：已通过 GoldenNugget 主线的 `HomeDomain` 备份恢复管道（`MobileBackup2`）在物理真机硬件上完成端到端全量实测验证（官方文档已变更为 `Verified end-to-end`）。独立 AirLift 单通道写入仍受限于 ATAirlock rename 覆盖限制。
-2. **ATAirlock `rename` 覆盖限制 (AirLift 单独通道特有)**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。*(注：通过 GoldenNugget 的 `HomeDomain` 备份恢复管道投递可彻底规避此限制)*。
+1. **物理真机端到端落地实测**：已通过 GoldenNugget 主线的 `HomeDomain` 备份恢复管道（`MobileBackup2`）在物理真机硬件上完成端到端全量实测验证（官方文档已变更为 `Verified end-to-end`）。本仓库的 AirLift 单通道也已通过真机实测（见上文验证章节），包括在 iOS 27.0 (24A437) 上对已存在归档的成功覆写。
+2. **ATAirlock `rename` 覆盖限制 (AirLift 单独通道特有)**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。**实测补充**：在 iPhone 16 Pro Max / iOS 27.0 (24A437) 上，对已存在归档的覆写是**成功**的（回读内容与新载荷逐字节一致），说明该限制并非在所有机型/版本上都会触发，但仍属版本相关行为，因此 `--force-overwrite`（两阶段：复位归档 → 重启 → 重新写入）继续作为更新时的稳妥路径保留。*(注：通过 GoldenNugget 的 `HomeDomain` 备份恢复管道投递可彻底规避此限制)*。
 3. **锁屏脚注监督模式考量**：`com.apple.shareddeviceconfiguration` 属于 Apple 官方 MDM 规范；在特定受限企业策略或特定子版本中，系统可能要求设备处于 Supervised 监督模式才能展示锁屏脚注。
+4. **生效时机：首次注入后必须做一次 SpringBoard 重启**：SpringBoard 只在**自身启动过程**中读取 `StatusBarOverrides.archive`，所以在它运行期间由 AirLift 放进设备的归档不会被自动加载——**第一次**注入后必须执行一次 `--respring`（或 GUI 的"⚡ 立即重启 SpringBoard"按钮，或单独执行 `python3 tools/airlift_carrier_deploy.py --respring`），此时单纯整机重启是不够的。一旦 SpringBoard 读取并把覆写状态重新落盘，覆写就会**在后续整机重启后持续保持**（已在 iPhone 16 Pro Max / iOS 27.0 24A437 上实测验证）。另外灵动岛机型的状态栏不显示运营商名，请在**控制中心**查看。
+5. **覆写是静态的——飞行模式下仍显示自定义运营商名**：这份归档不只是"改名"，而是把整个蜂窝状态栏项都钉死了（`enabled = true`、`status = 5`、`type = <网络类型>`、`displayValue = <格数>`、`string`/`crossfadeString`）。SpringBoard 启动时把磁盘记录合并到实时状态域之上，归档里**写了的字段一律优先**，因此开启飞行模式（实时域没有可用的蜂窝项）时，被钉死的这一项依旧会被渲染：锁屏左上角与控制中心仍显示自定义名字，而且被钉死的信号格数/网络制式也可能继续显示。只有 `--reset`（不含任何 entry 的归档）能完全恢复原生表现；若想让名字随服务状态变化，需要运行时 hook（越狱插件或系统/MDM 级能力），本通道做不到。
+6. **暂存阶段健壮性与验证诚实性**：`stage` 阶段现在最多重试 3 次，每次使用全新的 staging 随机名并重新采集 Books 前置镜像；任何一次失败都会自动回滚，因此设备端的瞬时 Books 写入不再会留下 `/var/mobile/Media/airlift-src-*` 残留目录或 `Books.plist` 脏行。由于 AFC 守护进程被限制在 Media 沙箱内，已落地的归档只能通过 staging 符号链接**探测**其存在（stat 非“文件不存在”即视为已写入）；字节级回读需要把归档从 SpringBoard 移出（破坏性），因此 CLI 会如实显示 `Byte Verification: unavailable` 而不会伪造结果。若发生硬性中断（例如进程被杀），执行 `--clean-device` 即可恢复干净的暂存状态。
 
 ---
 

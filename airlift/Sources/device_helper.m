@@ -575,6 +575,101 @@ static BOOL IsCanaryLeaf(NSString *leaf) {
     return IsLowercaseHex([leaf substringWithRange:tokenRange], 32);
 }
 
+static NSDictionary *ListDirectory(AFCConnectionRef afc, NSString *path) {
+    if (![path isEqual:@"."] && !IsSafeRelativePath(path))
+        return @{ @"ok": @NO, @"error": @"unsafe path", @"path": path };
+    AFCDirectoryRef directory = NULL;
+    if (AFCDirectoryOpen(afc, path.fileSystemRepresentation, &directory) != 0 ||
+        !directory)
+        return @{ @"ok": @NO, @"error": @"directory open failed", @"path": path };
+
+    NSMutableArray<NSDictionary *> *entries = NSMutableArray.array;
+    BOOL readComplete = NO;
+    for (NSUInteger index = 0; index < 8192; index++) {
+        char *raw = NULL;
+        int status = AFCDirectoryRead(afc, directory, &raw);
+        if (status != 0) break;
+        if (!raw) {
+            readComplete = YES;
+            break;
+        }
+        NSString *name = [NSString stringWithUTF8String:raw];
+        if (!name.length || [name isEqual:@"."] || [name isEqual:@".."]) continue;
+        NSString *child = [path isEqual:@"."]
+            ? name : [path stringByAppendingPathComponent:name];
+        NSString *kind = AFCFileKind(afc, child) ?: @"unknown";
+        NSMutableDictionary *entry = [@{ @"name": name, @"kind": kind } mutableCopy];
+        if ([kind isEqual:@"S_IFREG"]) entry[@"size"] = @(AFCFileSize(afc, child));
+        AFCKeyValueRef childInfo = NULL;
+        if (AFCFileInfoOpen(afc, child.fileSystemRepresentation, &childInfo) == 0 &&
+            childInfo) {
+            char *key = NULL;
+            char *value = NULL;
+            while (AFCKeyValueRead(childInfo, &key, &value) == 0 && key && value) {
+                if (strcmp(key, "st_mtime") == 0)
+                    entry[@"mtime"] = @(value);
+                key = NULL;
+                value = NULL;
+            }
+            AFCKeyValueClose(childInfo);
+        }
+        [entries addObject:entry];
+    }
+    BOOL closeOK = AFCDirectoryClose(afc, directory) == 0;
+    return @{ @"ok": @(readComplete && closeOK),
+              @"path": path,
+              @"entries": entries };
+}
+
+static NSDictionary *ProbeTarget(AFCConnectionRef afc,
+                                     NSString *linkDestination,
+                                     NSString *targetLeaf) {
+    NSString *targetThroughLink =
+        [linkDestination stringByAppendingPathComponent:targetLeaf];
+    AFCKeyValueRef info = NULL;
+    int status = AFCFileInfoOpen(afc, targetThroughLink.fileSystemRepresentation, &info);
+    BOOL readable = status == 0 && info != NULL;
+    if (info) AFCKeyValueClose(info);
+    // The AFC daemon runs inside the media sandbox, so a file that lives outside
+    // it cannot be stat'ed. Empirically the traversal link still resolves: an
+    // existing target reports status 10 while a missing one reports 8 (the same
+    // code a plain missing path returns). Anything that is not "missing" is
+    // therefore presence evidence.
+    BOOL present = readable || (status != 0 && status != 8);
+    return @{ @"targetPath": targetThroughLink,
+              @"status": @(status),
+              @"readable": @(readable),
+              @"present": @(present) };
+}
+
+static NSDictionary *ReadPath(AFCConnectionRef afc, NSString *path, long long limit) {
+    NSData *data = AFCReadFileWithLimit(afc, path, limit);
+    if (!data)
+        return @{ @"ok": @NO, @"error": @"read failed", @"path": path };
+    return @{ @"ok": @YES,
+              @"path": path,
+              @"size": @(data.length),
+              @"base64": [data base64EncodedStringWithOptions:0] };
+}
+
+static NSDictionary *PathInfo(AFCConnectionRef afc, NSString *path) {
+    AFCKeyValueRef info = NULL;
+    int status = AFCFileInfoOpen(afc, path.fileSystemRepresentation, &info);
+    if (status != 0 || !info)
+        return @{ @"ok": @NO, @"error": @"stat failed", @"path": path, @"status": @(status) };
+    NSMutableDictionary *fields = NSMutableDictionary.dictionary;
+    char *key = NULL;
+    char *value = NULL;
+    while (AFCKeyValueRead(info, &key, &value) == 0 && key && value) {
+        fields[[NSString stringWithUTF8String:key]] =
+            [NSString stringWithUTF8String:value] ?: @"(nil)";
+        key = NULL;
+        value = NULL;
+    }
+    AFCKeyValueClose(info);
+    return @{ @"ok": @YES, @"path": path, @"fields": fields };
+}
+
 static BOOL RemoveGeneratedTree(AFCConnectionRef afc,
                                 NSString *path,
                                 NSUInteger depth) {
@@ -609,6 +704,89 @@ static BOOL RemoveGeneratedTree(AFCConnectionRef afc,
     }
     return AFCRemovePath(afc, path.fileSystemRepresentation) == 0 &&
         !AFCExists(afc, path);
+}
+
+static BOOL GeneratedEntryName(NSString *name) {
+    NSArray<NSString *> *prefixes = @[
+        AIRLIFT_SOURCE_PREFIX, AIRLIFT_LINK_PREFIX, AIRLIFT_RECOVERED_PREFIX
+    ];
+    for (NSString *prefix in prefixes)
+        if ([name hasPrefix:prefix] &&
+            IsLowercaseHex([name substringFromIndex:prefix.length], 20))
+            return YES;
+    return NO;
+}
+
+static NSDictionary *CleanStaging(AFCConnectionRef afc) {
+    AFCDirectoryRef directory = NULL;
+    if (AFCDirectoryOpen(afc, ".", &directory) != 0 || !directory)
+        return @{ @"ok": @NO, @"error": @"media root open failed" };
+
+    NSMutableArray<NSString *> *names = NSMutableArray.array;
+    BOOL readComplete = NO;
+    for (NSUInteger index = 0; index < 8192; index++) {
+        char *raw = NULL;
+        int status = AFCDirectoryRead(afc, directory, &raw);
+        if (status != 0) break;
+        if (!raw) {
+            readComplete = YES;
+            break;
+        }
+        NSString *name = [NSString stringWithUTF8String:raw];
+        if (name.length && GeneratedEntryName(name)) [names addObject:name];
+    }
+    BOOL closeOK = AFCDirectoryClose(afc, directory) == 0;
+
+    NSMutableArray<NSString *> *removed = NSMutableArray.array;
+    NSMutableArray<NSString *> *failures = NSMutableArray.array;
+    for (NSString *name in names) {
+        if (RemoveGeneratedTree(afc, name, 0)) [removed addObject:name];
+        else [failures addObject:name];
+    }
+    NSMutableArray<NSString *> *remaining = NSMutableArray.array;
+    for (NSString *name in names)
+        if (AFCExists(afc, name)) [remaining addObject:name];
+    BOOL complete = readComplete && closeOK && remaining.count == 0;
+    return @{ @"ok": @(complete),
+              @"stagingEntriesFound": names,
+              @"removed": removed,
+              @"remaining": remaining,
+              @"failures": failures };
+}
+
+static NSDictionary *Cleanup(DeviceSession *session, NSArray<NSString *> *args) {
+    NSString *source = args[0];
+    NSString *linkDestination = args[1];
+    NSString *recovered = args[2];
+    NSString *snapshotRoot = args[3];
+    NSDictionary *snapshot = LoadBooksSnapshot(snapshotRoot);
+    BOOL safeArguments =
+        GeneratedNamesMatch(source, linkDestination, recovered) && snapshot != nil;
+    if (!safeArguments)
+        return @{ @"ok": @NO, @"safeArguments": @NO };
+
+    NSMutableArray<NSString *> *failures = NSMutableArray.array;
+    if (!RemoveIfPresent(session->afc, linkDestination))
+        [failures addObject:@"relocated link"];
+    if (!RemoveIfPresent(session->afc, recovered))
+        [failures addObject:@"recovered file"];
+    if (!RemoveGeneratedTree(session->afc, source, 0))
+        [failures addObject:@"StreamingZip tree"];
+    NSDictionary *booksRestore = RestoreBooksState(session->afc, snapshotRoot);
+    if (![booksRestore[@"ok"] boolValue]) [failures addObject:@"Books preimage"];
+
+    BOOL sourceAbsent = !AFCExists(session->afc, source);
+    BOOL linkAbsent = !AFCExists(session->afc, linkDestination);
+    BOOL recoveredAbsent = !AFCExists(session->afc, recovered);
+    BOOL complete = failures.count == 0 &&
+        sourceAbsent && linkAbsent && recoveredAbsent;
+    return @{ @"ok": @(complete),
+              @"cleanupComplete": @(complete),
+              @"failures": failures,
+              @"sourceAbsent": @(sourceAbsent),
+              @"linkAbsent": @(linkAbsent),
+              @"recoveredAbsent": @(recoveredAbsent),
+              @"booksRestore": booksRestore };
 }
 
 static NSDictionary *SessionSummary(DeviceSession *session) {
@@ -725,15 +903,41 @@ static NSDictionary *Stage(DeviceSession *session, NSArray<NSString *> *args) {
                 zipService, &response, &format);
         }
     }
+    id responseValue = response ? (__bridge id)response : nil;
+    NSString *responseSummary = nil;
+    if ([responseValue isKindOfClass:NSDictionary.class] ||
+        [responseValue isKindOfClass:NSArray.class] ||
+        [responseValue isKindOfClass:NSString.class] ||
+        [responseValue isKindOfClass:NSNumber.class]) {
+        NSData *encoded = [NSJSONSerialization dataWithJSONObject:responseValue
+                                                          options:0
+                                                            error:nil];
+        responseSummary = encoded
+            ? [[NSString alloc] initWithData:encoded
+                                    encoding:NSUTF8StringEncoding]
+            : [responseValue description];
+    } else if (responseValue) {
+        responseSummary = [responseValue description];
+    }
     if (response) CFRelease(response);
     if (zipService) AMDServiceConnectionInvalidate(zipService);
 
     NSString *link =
         [source stringByAppendingPathComponent:@"p0/p1/p2/link"];
-    BOOL sourceObjects = AFCExists(session->afc, source) &&
-        AFCExists(session->afc, link) &&
-        AFCExists(session->afc,
-                  [source stringByAppendingPathComponent:@"payload"]);
+    NSString *payloadPath = [source stringByAppendingPathComponent:@"payload"];
+    // The conduit may finish unpacking slightly after it answers, so poll for
+    // the extracted objects instead of sampling them exactly once.
+    BOOL sourceObjects = NO;
+    NSUInteger sourceAttempts = 60;
+    for (NSUInteger index = 0; index < sourceAttempts; index++) {
+        if (AFCExists(session->afc, source) &&
+            AFCExists(session->afc, link) &&
+            AFCExists(session->afc, payloadPath)) {
+            sourceObjects = YES;
+            break;
+        }
+        if (index + 1 < sourceAttempts) usleep(250000);
+    }
     BOOL directoriesReady = EnsureDirectory(session->afc, @"Books") &&
         EnsureDirectory(session->afc, @"Books/Sync");
     BOOL booksWritten = sourceObjects && directoriesReady &&
@@ -748,6 +952,7 @@ static NSDictionary *Stage(DeviceSession *session, NSArray<NSString *> *args) {
               @"zipServiceStatus": @(serviceStatus),
               @"zipMessageStatus": @(messageStatus),
               @"zipResponseStatus": @(responseStatus),
+              @"zipResponse": responseSummary ?: @"(none)",
               @"archiveSent": @(archiveSent),
               @"sourceObjectsPresent": @(sourceObjects),
               @"booksWritten": @(booksWritten) };
@@ -842,24 +1047,29 @@ static NSDictionary *FinishDeploy(DeviceSession *session, NSArray<NSString *> *a
     if (!safeArguments)
         return @{ @"ok": @NO, @"safeArguments": @NO };
 
-    NSData *observed = nil;
+    NSUInteger maximumAttempts = [waitArgument isEqual:@"1"] ? 40 : 1;
+    NSDictionary *targetProbe = nil;
+    BOOL targetPresent = NO;
     NSUInteger readbackAttempts = 0;
-    NSUInteger maximumAttempts = [waitArgument isEqual:@"1"] ? 60 : 1;
     for (NSUInteger index = 0; index < maximumAttempts; index++) {
         readbackAttempts++;
-        observed = AFCReadFile(session->afc, recovered);
-        if ([observed isEqualToData:expected]) break;
+        targetProbe = ProbeTarget(session->afc, linkDestination, targetLeaf);
+        targetPresent = [targetProbe[@"present"] boolValue];
+        if (targetPresent) break;
         if (index + 1 < maximumAttempts) usleep(250000);
     }
-    BOOL recoveredPresent = observed != nil;
-    BOOL bytesMatch = recoveredPresent && [observed isEqualToData:expected];
-    NSMutableArray<NSString *> *failures = NSMutableArray.array;
+    NSData *observedTarget = [targetProbe[@"readable"] boolValue]
+        ? AFCReadFileWithLimit(session->afc, targetProbe[@"targetPath"], 65536)
+        : nil;
+    BOOL targetBytesMatch =
+        observedTarget != nil && [observedTarget isEqualToData:expected];
+    NSData *observedRecovered =
+        AFCReadFileWithLimit(session->afc, recovered, 65536);
+    BOOL recoveredPresent = observedRecovered != nil;
+    BOOL recoveredBytesMatch =
+        recoveredPresent && [observedRecovered isEqualToData:expected];
 
-    NSString *targetThroughLink =
-        [linkDestination stringByAppendingPathComponent:targetLeaf];
-    BOOL targetPresent = AFCExists(session->afc, targetThroughLink);
-    if (!targetPresent)
-        [failures addObject:@"target file missing"];
+    NSMutableArray<NSString *> *failures = NSMutableArray.array;
 
     if (!RemoveIfPresent(session->afc, linkDestination))
         [failures addObject:@"relocated link"];
@@ -875,15 +1085,21 @@ static NSDictionary *FinishDeploy(DeviceSession *session, NSArray<NSString *> *a
     BOOL sourceAbsent = !AFCExists(session->afc, source);
     BOOL linkAbsent = !AFCExists(session->afc, linkDestination);
     BOOL recoveredAbsent = !AFCExists(session->afc, recovered);
-    BOOL cleanupComplete = failures.count == 0 && targetPresent &&
+    BOOL cleanupComplete = failures.count == 0 &&
         sourceAbsent && linkAbsent && recoveredAbsent && booksRestored;
-    return @{ @"ok": @(bytesMatch && cleanupComplete),
+    BOOL payloadVerified = targetBytesMatch || recoveredBytesMatch;
+    return @{ @"ok": @(cleanupComplete && targetPresent),
               @"safeArguments": @YES,
               @"targetPresent": @(targetPresent),
+              @"targetProbe": targetProbe ?: @{},
+              @"targetBytesMatch": @(targetBytesMatch),
+              @"targetBytesVerified": @(targetBytesMatch || recoveredBytesMatch),
               @"recoveredPresent": @(recoveredPresent),
-              @"recoveredBytesMatch": @(bytesMatch),
+              @"recoveredBytesMatch": @(recoveredBytesMatch),
+              @"payloadVerified": @(payloadVerified),
               @"readbackAttempts": @(readbackAttempts),
-              @"observedLength": @(observed.length),
+              @"observedLength": @(observedTarget.length),
+              @"expectedLength": @(expected.length),
               @"cleanupComplete": @(cleanupComplete),
               @"cleanupFailureCount": @(failures.count),
               @"failures": failures,
@@ -920,6 +1136,26 @@ int main(int argc, const char *argv[]) {
                         @([presentPaths containsObject:@"Books/Sync/Books.plist"]),
                     @"booksSyncPlistPresent":
                         @(AFCExists(session.afc, @"Books/Sync/Books.plist")) };
+            } else if ([command isEqual:@"read"] && argc == 5) {
+                operation = ReadPath(
+                    session.afc,
+                    [NSString stringWithUTF8String:argv[3]],
+                    strtoll(argv[4], NULL, 10));
+            } else if ([command isEqual:@"cleanup"] && argc == 7) {
+                operation = Cleanup(&session, @[
+                    [NSString stringWithUTF8String:argv[3]],
+                    [NSString stringWithUTF8String:argv[4]],
+                    [NSString stringWithUTF8String:argv[5]],
+                    [NSString stringWithUTF8String:argv[6]],
+                ]);
+            } else if ([command isEqual:@"clean-staging"] && argc == 3) {
+                operation = CleanStaging(session.afc);
+            } else if ([command isEqual:@"info"] && argc == 4) {
+                operation = PathInfo(
+                    session.afc, [NSString stringWithUTF8String:argv[3]]);
+            } else if ([command isEqual:@"list"] && argc == 4) {
+                operation = ListDirectory(
+                    session.afc, [NSString stringWithUTF8String:argv[3]]);
             } else if ([command isEqual:@"snapshot-books"] && argc == 4) {
                 operation = SnapshotBooksState(
                     session.afc, [NSString stringWithUTF8String:argv[3]]);

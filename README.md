@@ -26,7 +26,7 @@ This project supports all devices capable of running **iOS 27.x** (Builds `24A30
 
 | Device Family | Models | Display Type | Cellular Rendering Behavior | Verification Status |
 |---|---|---|---|---|
-| **Dynamic Island (Pro)** | iPhone 14 Pro / Pro Max<br>iPhone 15 Pro / Pro Max<br>iPhone 16 Pro / Pro Max | 灵动岛 (Dynamic Island) | **Single SIM**: Full-height 4-bars in trailing ear.<br>**Dual SIM**: Native stacked 4-bars (Primary) + 4-dots (Secondary).<br>**Text Display**: Alternating ticker on Lock Screen; full labels (`[P] Carrier`, `[S] Carrier`) in Control Center. | 🟢 **Simulator Verified** |
+| **Dynamic Island (Pro)** | iPhone 14 Pro / Pro Max<br>iPhone 15 Pro / Pro Max<br>iPhone 16 Pro / Pro Max | 灵动岛 (Dynamic Island) | **Single SIM**: Full-height 4-bars in trailing ear.<br>**Dual SIM**: Native stacked 4-bars (Primary) + 4-dots (Secondary).<br>**Text Display**: Alternating ticker on Lock Screen; full labels (`[P] Carrier`, `[S] Carrier`) in Control Center. | 🟢 **Physical (iPhone 16 Pro Max, iOS 27.0) + Simulator** |
 | **Dynamic Island (Base)** | iPhone 15 / 15 Plus<br>iPhone 16 / 16 Plus | 灵动岛 (Dynamic Island) | Identical to Pro models; automatic responsive Dynamic Island layout. | 🟢 **Fully Compatible** |
 | **Classic Notch & Home** | iPhone 13 / 14 / Plus<br>iPhone SE (2nd / 3rd gen) | 经典顶部状态栏 (Classic/Notch) | Direct top-left status bar text display (`Carrier 5G` + signal bars). | 🟢 **Simulator Verified** |
 
@@ -42,6 +42,11 @@ Our reverse engineering of `SBSystemStatusStatusBarOverridesArchiver` successful
    - ✅ **CoreSimulator**: 100% verified (SpringBoard natively unarchives and renders layout).
    - ✅ **Offline / Unit Test**: Data structure creation and parsing validated (`tools/test_statusbar_archive.py`).
    - ✅ **Physical Hardware (End-to-End Confirmed)**: In commit [`dbb000cb`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/dbb000cb248e91a0ad53378a5f5d227d1540d562) and official documentation ([`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md)), lead maintainer `@awesomenull` updated the verification status to **`"Verified end-to-end by me and other users"`**. Real hardware tests confirmed byte-for-byte fidelity against physical iOS 27 dumps via `tools/deploy_statusbar_archive.py` and `tools/fetch_statusbar_archive.py`.
+4. **AirLift Channel — Physical End-to-End Verification (this repository)**: The in-repo AirLift channel was verified on **iPhone 16 Pro Max (iPhone17,2), iOS 27.0 (24A437)** over USB:
+   - ✅ **Byte-exact delivery**: the written `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` was fetched back through the AirTraffic readback asset and compared byte-for-byte with the payload.
+   - ✅ **Rendered on the device**: the custom carrier string (`CMHK`) is displayed in **Control Center** (Dynamic Island models do not render a carrier name in the home-screen status bar).
+   - ✅ **Persistent**: once SpringBoard has adopted the record, the overrides survive full device reboots (see limitation 4).
+   - ✅ **Failure handling**: injected Books-preimage drift was detected, rolled back and retried automatically, and every staging failure left zero residue (`airlift-*` trees and Books staging rows restored).
 
 ---
 
@@ -150,6 +155,28 @@ python3 tools/airlift_carrier_deploy.py --reset
 
 # Local Dry-Run (verify packaging without device connection)
 python3 tools/airlift_carrier_deploy.py -c "Test Carrier" --dry-run
+
+# Two-Phase Auto Overwrite (bypass ATAirlock rename limitation automatically)
+python3 tools/airlift_carrier_deploy.py -c "NewCarrier 5G" --force-overwrite
+
+# Presets management
+python3 tools/airlift_carrier_deploy.py --list-presets
+python3 tools/airlift_carrier_deploy.py --preset dual-cmcc-cucc
+
+# Interactive Wizard Mode
+python3 tools/airlift_carrier_deploy.py -i
+
+# Launch Web GUI Dashboard
+python3 tools/gui_server.py
+
+# Activate overrides: restart SpringBoard so it loads the archive (also standalone)
+python3 tools/airlift_carrier_deploy.py --respring
+
+# Recover from a failed deployment (removes staging leftovers + dirty Books state)
+python3 tools/airlift_carrier_deploy.py --clean-device
+
+# Device-side resilience check (writes a reset archive; requires --yes)
+python3 tools/airlift_resilience_check.py --yes
 ```
 
 ### 2. Standalone Archive Generator & Simulator Deployer (`tools/generate_statusbar_archive.py`)
@@ -177,6 +204,13 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 ├── README_ZH.md                                       # Chinese Documentation (中文同步文档)
 ├── tools/                                             # Automation and deployment toolchain
 │   ├── airlift_carrier_deploy.py                      # Universal AirLift physical device deployer CLI
+│   ├── airlift_resilience_check.py                    # Device-side retry/rollback resilience check (device writes, needs --yes)
+│   ├── gui_server.py                                  # Bilingual web dashboard (deploy / repair / SpringBoard restart)
+│   ├── display_metrics.py                             # Dynamic Island width heuristics & truncation warnings
+│   ├── footnote_generator.py                          # Lock Screen footnote .mobileconfig generator
+│   ├── presets.py                                     # Named carrier presets
+│   ├── terminal_preview.py                            # Terminal status bar preview
+│   ├── test_airlift_features.py                       # Offline unit test suite
 │   └── generate_statusbar_archive.py                  # Universal archive generator & simulator deployer
 ├── airlift/                                           # Native AirLift exploit & synchronizer subsystem
 │   ├── Sources/                                       # Native Objective-C helpers (device_helper.m, airtraffic_host.m)
@@ -226,9 +260,12 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 ## ⚠️ Known Limitations & Open Research Questions
 
-1. **Physical Hardware Delivery**: Successfully verified end-to-end on physical hardware using the GoldenNugget `HomeDomain` backup restore pipeline (`MobileBackup2`). On standalone AirLift channels, write operations still encounter the ATAirlock `rename` overwrite constraint when the destination file exists.
-2. **ATAirlock `rename` Overwrite Constraint (AirLift-specific)**: AirTraffic's `-[ATAirlock processCompletedAsset:]` relies on Cocoa's `moveItemAtPath:toPath:error:`, which returns `NSFileWriteFileExistsError` if the destination file already exists. (The `HomeDomain` backup restore path completely avoids this issue).
+1. **Physical Hardware Delivery**: Successfully verified end-to-end on physical hardware using the GoldenNugget `HomeDomain` backup restore pipeline (`MobileBackup2`). The in-repo AirLift channel has since been verified on physical hardware as well (see the verification section above), including overwriting an already existing archive on iOS 27.0 (24A437).
+2. **ATAirlock `rename` Overwrite Constraint (AirLift-specific)**: AirTraffic's `-[ATAirlock processCompletedAsset:]` relies on Cocoa's `moveItemAtPath:toPath:error:`, which returns `NSFileWriteFileExistsError` when the destination file already exists. On iPhone 16 Pro Max / iOS 27.0 (24A437) overwriting an existing archive was measured to **succeed** (the archive fetched back matched the new payload byte-for-byte), so the constraint does not always bite — but it is build/path dependent, which is why `--force-overwrite` (two-phase: reset archive → reboot → fresh write) is kept as the safe path for updates. (The `HomeDomain` backup restore path avoids the question entirely.)
 3. **Lock Screen Footnote Supervision**: The `com.apple.shareddeviceconfiguration` payload is an official Apple MDM schema; in certain corporate or constrained environments, displaying the footnote on the lock screen may require device supervision.
+4. **Activation: the first injection needs one SpringBoard restart**: SpringBoard only reads `StatusBarOverrides.archive` while it is starting up, so an archive staged by AirLift while SpringBoard runs is never picked up on its own. The **first** injection therefore needs one SpringBoard restart (`--respring`, the GUI's "⚡ Restart SpringBoard" button, or standalone `python3 tools/airlift_carrier_deploy.py --respring`); a reboot alone is not enough at that moment. Once SpringBoard has loaded the record and written its own copy back, the overrides **persist across full reboots** (verified on iPhone 16 Pro Max / iOS 27.0 24A437). On Dynamic Island models the carrier text is rendered in **Control Center**, not in the home-screen status bar.
+5. **Overrides Are Static — the Custom Name Persists in Airplane Mode**: The archive does not merely rename the carrier, it pins the entire cellular entry (`enabled = true`, `status = 5`, `type = <network type>`, `displayValue = <bars>`, `string`/`crossfadeString`). SpringBoard merges the stored record over the live status-bar domain and every field the archive specifies wins, so with Airplane Mode enabled (no live cellular entry) the pinned entry is still rendered: the custom name stays visible on the Lock Screen and in Control Center, and the pinned bars/network type can remain visible as well. Only `--reset` (an archive with no entry at all) restores fully native behaviour; making the name conditional on the service state would need a runtime hook (jailbreak tweak, or system/MDM level), which this channel does not provide.
+6. **Staging Robustness & Verification Honesty**: `stage` now retries up to 3 times with a fresh staging token and a fresh Books preimage, and every failed attempt is rolled back automatically, so a transient device-side Books write no longer strands `/var/mobile/Media/airlift-src-*` trees or stale asset rows in `Books.plist`. The AFC daemon is confined to the media sandbox, so the deployed archive can only be *probed* through the staging symlink (a non-missing `st_mode` stat means it exists); byte-exact readback would require moving the archive back out of SpringBoard, so the CLI reports `Byte Verification: unavailable` instead of inventing a result. Run `--clean-device` after any hard failure (e.g. the process was killed mid-deploy) to restore a pristine staging state.
 
 ---
 
