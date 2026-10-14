@@ -169,6 +169,9 @@ python3 tools/airlift_carrier_deploy.py -i
 # Launch Web GUI Dashboard
 python3 tools/gui_server.py
 
+# Tip: disconnect the iPhone Wi-Fi (Settings > Wi-Fi) and use a USB cable. The GUI
+# still proceeds over a local-network connection, but it warns and USB is recommended.
+
 # Activate overrides: restart SpringBoard so it loads the archive (also standalone)
 python3 tools/airlift_carrier_deploy.py --respring
 

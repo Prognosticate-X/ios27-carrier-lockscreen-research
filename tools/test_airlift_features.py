@@ -157,6 +157,49 @@ class TestPipelineDiagnostics(unittest.TestCase):
         self.assertIsNone(parse_springboard_pid("PID   Executable Path\n"))
         self.assertIsNone(parse_springboard_pid("12    /usr/libexec/otherd\n"))
 
+    def test_dashboard_endpoints_return_json(self):
+        """Regression: unknown endpoints must answer with JSON, never an empty body."""
+        import http.client
+        import json
+        import threading
+        from http.server import HTTPServer
+
+        from gui_server import DashboardHandler
+
+        server = HTTPServer(("127.0.0.1", 0), DashboardHandler)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            page = _http_request(port, "GET", "/")
+            self.assertIn("btnRespring", page)
+            self.assertIn("t_fn5", page)
+
+            for method, path, expected in (
+                ("POST", "/api/does-not-exist", 404),
+                ("GET", "/definitely-not-here", 404),
+            ):
+                status, body = _http_request(port, method, path, raw=True)
+                self.assertEqual(status, expected)
+                self.assertTrue(
+                    json.loads(body).get("error"),
+                    f"{method} {path} must return a JSON error body, got {body!r}",
+                )
+        finally:
+            server.shutdown()
+
+
+def _http_request(port, method, path, raw=False):
+    import http.client
+
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request(method, path)
+        response = connection.getresponse()
+        body = response.read().decode("utf-8")
+        return (response.status, body) if raw else body
+    finally:
+        connection.close()
+
 
 if __name__ == "__main__":
     unittest.main()

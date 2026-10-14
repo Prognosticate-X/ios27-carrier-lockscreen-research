@@ -173,6 +173,9 @@ python3 tools/airlift_carrier_deploy.py -i
 # 启动可视化 GUI 控制台 (自动打开浏览器)
 python3 tools/gui_server.py
 
+# 提示：使用前请断开 iPhone 的 Wi-Fi（设置 → 无线局域网）并使用 USB 数据线。
+# 若设备以本地网络方式接入，工具仍会继续执行，但会提示建议改用有线连接。
+
 # 生效：重启 SpringBoard 以加载归档（也可单独执行）
 python3 tools/airlift_carrier_deploy.py --respring
 

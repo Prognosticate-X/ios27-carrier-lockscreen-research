@@ -81,13 +81,26 @@ def set_progress(
 
 
 
-def get_real_usb_device() -> dict | None:
-    """Return device only if connected via physical wired USB."""
+def find_target_device() -> tuple[dict | None, bool]:
+    """Return (device, is_wired), preferring a wired USB connection.
+
+    The AirLift pipeline works over the local-network transport as well (verified
+    on iPhone 16 Pro Max / iOS 27.0), so a non-wired device is reported rather
+    than rejected; callers surface a warning instead of blocking the user.
+    """
     devices = query_connected_devices()
-    for d in devices:
-        if d.get("transport") == "wired":
-            return d
-    return None
+    for device in devices:
+        if device.get("transport") == "wired":
+            return device, True
+    if devices:
+        return devices[0], False
+    return None, False
+
+
+def get_real_usb_device() -> dict | None:
+    """Backwards compatible helper: wired device only."""
+    device, wired = find_target_device()
+    return device if wired else None
 
 
 def trigger_platform_reboot(udid: str) -> dict:
@@ -545,6 +558,9 @@ HTML_PAGE = f"""<!DOCTYPE html>
       <div class="footer-note" id="t_fn4">
         • <strong>自动退出</strong>：直接关闭本网页标签页，后台命令行程序将自动随之安全退出。
       </div>
+      <div class="footer-note" id="t_fn5">
+        • <strong>使用前请断开 iPhone 的 Wi-Fi 连接</strong>（设置 → 无线局域网），只保留 USB 数据线：有线连接更稳定；若设备以本地网络方式接入，工具会提示但仍会继续执行。
+      </div>
     </footer>
   </div>
 </div>
@@ -618,7 +634,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       fn2: "• <strong>安全机制</strong>：本工具仅针对 <code>SpringBoard</code> 状态栏归档执行注入，<strong>绝不碰触系统底层偏好目录</strong>，无数据清空风险。",
       fn3: "• <strong>修改技巧</strong>：若设备之前已经成功修改过文字，后续如果想要更换文字或修改角标，请点击 <strong>【🔄 自动覆写重写】</strong>。",
       fn4: "• <strong>自动退出</strong>：直接关闭本网页标签页，后台命令行程序将自动随之安全退出。",
-      alertNoUsb: "⚠️ 未检测到通过 USB 数据线连接的 iPhone。请先用数据线将手机直连电脑并解锁屏幕。",
+      fn5: "• <strong>使用前请断开 iPhone 的 Wi-Fi 连接</strong>（设置 → 无线局域网），只保留 USB 数据线：有线连接更稳定；若设备以本地网络方式接入，工具会提示但仍会继续执行。",
+      alertNoUsb: "⚠️ 未检测到通过 USB 数据线连接的 iPhone。请断开 iPhone 的 Wi-Fi、用数据线直连电脑并解锁屏幕。",
       alertSuccessDone: "🎉 状态栏归档已成功安全送达设备！请点击下方按钮重启设备生效。",
       confirmReset: "确定要清除所有运营商自定义，恢复系统默认吗？",
       btnRebootSending: "正在向设备下发整机重启指令...",
@@ -687,7 +704,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       fn2: "• <strong>Safety</strong>: Injects solely to <code>SpringBoard</code> status bar archive. <strong>Zero modifications to system preferences</strong>, no data wipe risk.",
       fn3: "• <strong>Overwrite Rule</strong>: If your device already carries a customized status bar, click <strong>[Auto Overwrite]</strong> to update text smoothly.",
       fn4: "• <strong>Auto-Exit</strong>: Simply close this browser tab, and the terminal CLI process will safely exit.",
-      alertNoUsb: "⚠️ No USB connected iPhone detected. Please connect your iPhone with a cable and unlock the screen.",
+      fn5: "• <strong>Disconnect the iPhone Wi-Fi before use</strong> (Settings > Wi-Fi) and keep only the USB cable: wired is more reliable. If the device is reached over the local network the tool warns but still proceeds.",
+      alertNoUsb: "⚠️ No USB connected iPhone detected. Turn off the iPhone Wi-Fi, connect it with a cable, and unlock the screen.",
       alertSuccessDone: "🎉 Status bar payload delivered! Click the reboot button below to apply.",
       confirmReset: "Are you sure you want to clear all status bar overrides and restore system defaults?",
       btnRebootSending: "Dispatching full reboot command...",
@@ -790,6 +808,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
     document.getElementById('t_fn2').innerHTML = dict.fn2;
     document.getElementById('t_fn3').innerHTML = dict.fn3;
     document.getElementById('t_fn4').innerHTML = dict.fn4;
+    document.getElementById('t_fn5').innerHTML = dict.fn5;
 
     if (lastProgressState) {{
       renderProgress(lastProgressState);
@@ -815,7 +834,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
   async function checkDeviceStatus() {{
     try {{
       const res = await fetch('/api/devices');
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       const dict = I18N[currentLang];
       
       const badge = document.getElementById('deviceBadge');
@@ -848,6 +867,18 @@ HTML_PAGE = f"""<!DOCTYPE html>
   setInterval(checkDeviceStatus, 3000);
   checkDeviceStatus();
 
+  async function readJsonResponse(res) {{
+    const text = await res.text();
+    if (!text) {{
+      throw new Error('服务器未返回内容 (HTTP ' + res.status + ')。若刚更新过代码，请关闭网页与命令行后重新运行 python3 tools/gui_server.py');
+    }}
+    try {{
+      return JSON.parse(text);
+    }} catch (parseError) {{
+      throw new Error('服务器返回了非 JSON 内容 (HTTP ' + res.status + '): ' + text.slice(0, 160));
+    }}
+  }}
+
   async function startDeploy(forceOverwrite) {{
     const dict = I18N[currentLang];
     if (!isUsbConnected) {{
@@ -875,7 +906,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
       headers: {{ 'Content-Type': 'application/json' }},
       body: JSON.stringify(payload)
     }});
-    const data = await res.json();
+    const data = await readJsonResponse(res);
     if (!data.ok) {{
       showAlertRaw('error', data.error || 'Task launch failed');
       setButtonsDisabled(false);
@@ -920,7 +951,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
     showProgress(false);
     try {{
       const res = await fetch('/api/repair', {{ method: 'POST' }});
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (data.ok) {{
         showAlertRaw('success', dict.repairDone);
       }} else {{
@@ -938,7 +969,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
     pollingInterval = setInterval(async () => {{
       try {{
         const res = await fetch('/api/progress');
-        const state = await res.json();
+        const state = await readJsonResponse(res);
         lastProgressState = state;
         
         renderProgress(state);
@@ -967,7 +998,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
 
     try {{
       const res = await fetch('/api/respring', {{ method: 'POST' }});
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (data.ok) {{
         showAlertDual('success', '✅ ' + dict.respringDone, '✅ ' + dict.respringDone);
         btn.innerText = dict.btnRespring;
@@ -994,7 +1025,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
 
     try {{
       const res = await fetch('/api/reboot', {{ method: 'POST' }});
-      const data = await res.json();
+      const data = await readJsonResponse(res);
       if (data.ok) {{
         const msgZh = '✅ ' + (data.message || '已下发重启');
         const msgEn = '✅ ' + (data.message_en || data.message || 'Reboot dispatched');
@@ -1063,24 +1094,28 @@ def execute_deploy_worker(body: dict):
         is_reset = body.get("reset", False)
         force_overwrite = body.get("force_overwrite", False)
 
-        usb_device = get_real_usb_device()
-        if not usb_device:
+        target_device, wired = find_target_device()
+        if not target_device:
             set_progress(
                 0,
                 step_zh="失败",
                 step_en="Failed",
-                error_zh="未找到通过有线 USB 直连的 iPhone 设备。",
-                error_en="No iPhone connected via wired USB detected.",
+                error_zh="未找到已连接的 iPhone。请用 USB 数据线连接设备、解锁屏幕并点击“信任此电脑”，同时建议断开 iPhone 的 Wi-Fi。",
+                error_en="No iPhone detected. Connect the device with a USB cable, unlock it, trust this computer, and preferably turn off the iPhone Wi-Fi.",
             )
             return
 
-        udid = usb_device["udid"]
+        udid = target_device["udid"]
+        transport_note_zh = "" if wired else "（注意：当前为本地网络/Wi-Fi 连接，建议改用 USB 数据线）"
+        transport_note_en = "" if wired else " (note: connected over the local network / Wi-Fi; a USB cable is recommended)"
+        if not wired:
+            print("[!] 设备当前通过本地网络(Wi-Fi)接入，建议使用 USB 数据线连接。")
         set_progress(
             15,
             step_zh="正在生成归档",
             step_en="Generating Archive",
-            details_zh="解析可选字段并构造 NSKeyedArchiver bplist...",
-            details_en="Parsing fields and constructing NSKeyedArchiver bplist...",
+            details_zh="解析可选字段并构造 NSKeyedArchiver bplist..." + transport_note_zh,
+            details_en="Parsing fields and constructing NSKeyedArchiver bplist..." + transport_note_en,
         )
 
         payload = build_cellular_archive(
@@ -1222,7 +1257,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            usb_dev = get_real_usb_device()
+            usb_dev, _wired = find_target_device()
             self.wfile.write(json.dumps({
                 "connected": bool(usb_dev),
                 "device": usb_dev,
@@ -1245,8 +1280,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(mobileconfig.read_bytes())
         else:
-            self.send_response(404)
-            self.end_headers()
+            self.send_json(
+                {"ok": False, "error": "unknown endpoint", "path": parsed.path,
+                 "hint": "接口不存在：请关闭网页与命令行后重新运行 python3 tools/gui_server.py 以加载最新代码。"},
+                status=404,
+            )
+
+    def send_json(self, payload: dict, status: int = 200):
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
         global SERVER_RUNNING
@@ -1272,9 +1318,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
 
-            usb_dev = get_real_usb_device()
+            usb_dev, _wired = find_target_device()
             if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未检测到已连接的 iPhone"}, ensure_ascii=False).encode("utf-8"))
+                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}, ensure_ascii=False).encode("utf-8"))
                 return
             try:
                 report = clean_device(usb_dev["udid"])
@@ -1293,9 +1339,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
 
-            usb_dev = get_real_usb_device()
+            usb_dev, _wired = find_target_device()
             if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未检测到已连接的 iPhone"}, ensure_ascii=False).encode("utf-8"))
+                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}, ensure_ascii=False).encode("utf-8"))
                 return
             try:
                 activated = respring_device(usb_dev["udid"])
@@ -1308,12 +1354,18 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
 
-            usb_dev = get_real_usb_device()
+            usb_dev, _wired = find_target_device()
             if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未检测到已连接的 iPhone"}).encode("utf-8"))
+                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}).encode("utf-8"))
                 return
             res = trigger_platform_reboot(usb_dev["udid"])
             self.wfile.write(json.dumps(res).encode("utf-8"))
+        else:
+            self.send_json(
+                {"ok": False, "error": "unknown endpoint", "path": parsed.path,
+                 "hint": "接口不存在：请关闭网页与命令行后重新运行 python3 tools/gui_server.py 以加载最新代码。"},
+                status=404,
+            )
 
 
 def heartbeat_watcher():
