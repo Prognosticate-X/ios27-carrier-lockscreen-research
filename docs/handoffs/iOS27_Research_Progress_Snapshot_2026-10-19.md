@@ -100,6 +100,23 @@ CC 顶部 `中国联通 5G` 与 Wi-Fi 同时出现的原因**不是归档覆写*
 3. **击穿实时域缓存**：只替换磁盘归档不够——`systemstatusd` 的实时覆写域会通过 `diskRecord recordByApplyingRecord:liveRecord`（live 优先）把旧记录盖回来。必须先 `SIGSTOP` SpringBoard、`SIGKILL` `systemstatusd`，完成替换后再 `SIGKILL` SpringBoard，才能让新的部分 entry 生效。
 4. **`recordByApplyingRecord:` 反汇编确认**（模拟器 SpringBoard，`0x5b5b50`）：实现就是 `[statusBarData dataByApplyingOverlay:other.statusBarData]`，即 **entry 级原子合并**；`isEmpty`（`0x5b5b08`）= `statusBarData.isEmpty` 且 suppressed 集合为空。
 
+### 3.0.3 `status` 取值矩阵结论（16:13）
+
+| `status` | 名称显示 |
+|---|---|
+| **5** | ✅ 显示（V4） |
+| 0（缺失） | ❌ 不显示 |
+| 1 | ❌ 不显示（S1 实测） |
+| -1 | ❌ 不显示（V7 哨兵实测） |
+
+因此 **carrier string 的渲染被 `status=5` 门控**。`status` 是静态写入的字段，没有任何“跟随实时蜂窝状态”的哨兵或回退入口。
+
+结论：
+
+- **静态归档能做到**：自定义运营商名 + 锁屏/CC 实时信号格（`displayValue` 省略）+ CC 无制式文字（`type` 省略）。
+- **静态归档做不到**：飞行模式下自动隐藏名称（必须钉死 `status=5`，条目永远被视为“已连接”）。
+- 若未来要实现真正的飞行模式联动，只能在运行期动态发布 `STStatusBarOverridesStatusDomain`（tweak/注入），或者修改数据源层（本次已验证不可写）。
+
 ### 3.0.2 归档器合并/写回逻辑（objdump 已完整还原）
 
 `-[SBSystemStatusStatusBarOverridesArchiver _queue_setupObservingAndReconcileInitialState]`（`0x5b50d4`，模拟器 SpringBoard）的实际流程：
