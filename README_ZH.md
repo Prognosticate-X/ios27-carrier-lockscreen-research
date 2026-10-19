@@ -44,10 +44,16 @@
    - ✅ **离线单元测试**：GoldenNugget 编写离线测试套件 `tools/test_statusbar_archive.py` 验证数据结构生成与解析逻辑。
    - ✅ **物理真机实测通过**：在 Commit [`dbb000cb`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/dbb000cb248e91a0ad53378a5f5d227d1540d562) 与官方文档 [`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md) 中，GoldenNugget 开发者正式更新实测结论为：**`"Verified end-to-end by me and other users"`**。通过开发专属的 `tools/deploy_statusbar_archive.py` 与 `tools/fetch_statusbar_archive.py`，经对比生成的归档与真实 iOS 27.0.1 设备 dump 字节完全一致，宣告端到端实机验证全面打通！
 4. **AirLift 通道真机端到端实测（本仓库自身通道）**：在 **iPhone 16 Pro Max（iPhone17,2），iOS 27.0（24A437）** 上通过 USB 完成实测：
-   - ✅ **字节级投递**：把写入 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 的归档再通过 AirTraffic 回读资产取回，与载荷逐字节比对一致。
+   - ✅ **字节级投递（24A437）**：把写入 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 的归档再通过 AirTraffic 回读资产取回，与载荷逐字节比对一致。在 iOS 27.0.1（24A446）上，AFC 拒绝读取 `/var/mobile/Media` 之外的文件，因此该回读在新构建上不可用（见限制第 6 条）。
    - ✅ **真机渲染**：自定义运营商名（`CMHK`）在**控制中心**正常显示（灵动岛机型主屏顶栏不渲染运营商名）。
    - ✅ **持久化**：SpringBoard 首次接管后，覆写在整机重启后依然保持（见限制第 4 条）。
    - ✅ **故障处理**：人为注入 Books 前置镜像漂移后，流水线能识别、回滚并自动重试；每次 staging 失败都不留残留（`airlift-*` 目录与 Books 暂存行均已还原）。
+5. **CommCenter 上游通道（路线 A）——已在 iPhone 14 Pro / iOS 27.0.1（24A446）完成准备与部分实测**：`InterCarrierRoamingDisplayNames` PLMN 映射是当前唯一已知的“改运营商名但保留真实信号与飞行模式联动”路径，实机实验链路已全部打通：
+   - ✅ **目标网络已确认**：测试机为 **中国联通**（`中国联通`，PLMN `46001`/`46006`/`46009`/`46010`）。
+   - ✅ **验证面**：iPhone 14 Pro 锁屏左上角会渲染运营商名，因此**无需解锁即可截图验证**。
+   - ✅ **读取边界已实测**：AFC 能通过 AirLift 软链 `stat` HomeDomain 路径（`status=8` 不存在，`status=10` 存在但不可 stat），但**在该构建上无法读取 `/var/mobile/Media` 之外的文件内容**；同时所有 `com.apple.operator_*` / `com.apple.carrier_*` 偏好域在干净设备上均不存在（注入等于新建域，而非覆盖既有设置）。
+   - ✅ **写入通道已在 24A446 复验**：通过 AirLift 写入的探针名 `ZZTEST9` 成功显示在锁屏；且仅 respring 不会清除已被系统采纳的静态覆写，需要用户空间/整机重启。
+   - ⏳ **偏好注入进行中**：`tools/commcenter_carrier_inject.py` 已可生成并部署映射，最终实机判定待设备解锁（整机重启后 iOS 会进入 USB 受限状态，必须输入锁屏密码才能恢复连接）。详细交接见 [`docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
 
 ---
 
@@ -214,7 +220,24 @@ python3 tools/airlift_carrier_deploy.py --clean-device
 python3 tools/airlift_resilience_check.py --yes
 ```
 
-### 2. 独立归档生成器与模拟器部署 (`tools/generate_statusbar_archive.py`)
+### 2. CommCenter 上游偏好层实验（路线 A）
+```bash
+# 只读侦察：通过 AirLift 软链对 HomeDomain 做 stat / list / read
+python3 tools/device_path_probe.py --udid <UDID> \
+  --stat /var/mobile/Library/SpringBoard/StatusBarOverrides.archive
+
+# 离线生成 InterCarrierRoamingDisplayNames 映射（不接触设备）
+python3 tools/commcenter_carrier_inject.py -c "自定义 5G" --plmn china_unicom --dry-run
+
+# 注入到主/副卡 operator 偏好域（HomeDomain / Library/Preferences）
+python3 tools/commcenter_carrier_inject.py -c "自定义 5G" --plmn china_unicom
+
+# 视觉验证：截图与 CoreDevice HID 控制中心手势
+python3 tools/device_ui.py screenshot control-center.png
+python3 tools/device_ui.py open-cc
+```
+
+### 3. 独立归档生成器与模拟器部署 (`tools/generate_statusbar_archive.py`)
 ```bash
 # 生成定制二进制归档文件
 python3 tools/generate_statusbar_archive.py -c " Apple 5G" -b 4 -t 5g -o custom.archive
@@ -241,6 +264,9 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 ├── tools/                                             # 跨设备通用自动化工具链
 │   ├── airlift_carrier_deploy.py                      # 通用型 AirLift 物理真机部署 CLI
 │   ├── airlift_resilience_check.py                    # 真机重试/回滚韧性自检 (会写设备, 需 --yes)
+│   ├── commcenter_carrier_inject.py                   # 路线 A：InterCarrierRoamingDisplayNames 偏好注入器
+│   ├── device_path_probe.py                           # 通过 AirLift 软链的只读 HomeDomain 侦察工具
+│   ├── device_ui.py                                   # CoreDevice HID 手势 / 截图验证助手
 │   ├── gui_server.py                                  # 中英双语可视化控制台 (部署 / 修复 / 重启 SpringBoard)
 │   ├── display_metrics.py                             # 灵动岛宽度启发式与截断告警
 │   ├── footnote_generator.py                          # 锁屏脚注 .mobileconfig 生成器
@@ -268,7 +294,8 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
     ├── handoffs/                                      # 历次研究交接与阶段性论证归档
     │   ├── iOS27_Carrier_LockScreen_Research_Handoff_2026-09-25.md
     │   ├── iOS27_Carrier_Footnote_Research_Handoff_2026-09-28.md
-    │   └── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   ├── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   └── iOS27_CommCenter_Preference_Injection_2026-10-19.md
     ├── iOS27_Carrier_Footnote_Solution.md             # 终局完整技术方案与安全裁决报告
     ├── architecture.md                                # 系统全景架构与安全边界报告
     ├── carrier-data-flow.md                           # SIM -> CommCenter -> SystemStatusUI 全链路逆向

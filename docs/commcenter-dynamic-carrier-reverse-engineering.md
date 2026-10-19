@@ -149,3 +149,16 @@ primary_bars=body.get("bars") if body.get("bars") is not None else 4
    - **Step 2**：针对 `/var/mobile/Library/Preferences/` 下的 `com.apple.operator_1.merged.plist`、`com.apple.operator_1.plist` 及 `com.apple.commcenter.carrier_bundle.plist`，测试注入 `InterCarrierRoamingDisplayNames`（映射当前 SIM 卡 `MCC+MNC`）、`StatusBarImages` 与 `CarrierName`，验证 `cfprefsd` / `CommCenter` 重载后是否在不破坏 `.bundle` 签名的前提下动态更新 `operatorName`。
 2. **路线 B（离线提取 iOS 27 `CommCenter` 主程序反编译 `NetworkNameFactory` 与 `CarrierSettings` 子类）**：
    - `libCommCenterBase.dylib` 中的 `__ZTV24CarrierSettingsInterface` (`0x1f5adf8c8`) 与 `__ZTV27NetworkNameFactoryInterface` (`0x1f5adf858`) 为纯虚接口，具体派生类编译在 iOS 固件 `/System/Library/Frameworks/CoreTelephony.framework/Support/CommCenter` 主程序中。获取 iOS 27 IPSW 提取该二进制后，可直接定位虚表 `+0x50` 的具体实现，100% 确认免验签缓存键的读取优先级。
+
+---
+
+## 6. 实机验证状态与边界修正（2026-10-19 / iPhone 14 Pro / iOS 27.0.1 24A446）
+
+在把本文档的静态结论落到真机之前，先做了三项边界测量，结果修正了若干前提：
+
+1. **偏好域并不存在**：`/var/mobile/Library/Preferences/` 下 `com.apple.operator_1.plist`、`com.apple.operator_1.merged.plist`、`com.apple.carrier_1.plist`、`com.apple.carrier_1.merged.plist`、`com.apple.commcenter.carrier_bundle.plist`、`com.apple.commcenter.device_specific_nobackup.plist` 全部返回 `ENOENT`（通过 AirLift 软链 stat，status=8）。`/var/wireless/Library/Preferences/` 与 `/var/preferences/` 下的同名域同样不存在。
+   → 因此 §5 路线 A 的实际语义是 **新建 CFPreferences 域**，而不是修改既有 merged 缓存。
+2. **AFC 读通道失效**：在 24A446 上，AFC daemon 对 media 沙箱之外只有 metadata 权限；`read` 与目录 `list` 均失败，仅 `stat` 可穿过软链。因此无法用 AFC 回读偏好 plist 内容，字节级验证必须改用 MobileBackup2 备份。
+3. **静态覆写与动态注入的判定隔离**：`StatusBarOverrides.archive` 的优先级高于实时蜂窝域，必须先用 reset 归档 + 用户空间重启确认锁屏回到原生 `中国联通`，才能把“锁屏文字变化”归因于 CommCenter 偏好注入，否则会得到假阴性。
+
+已就绪的注入工具：`tools/commcenter_carrier_inject.py`（只读工具 `tools/device_path_probe.py`、视觉验证 `tools/device_ui.py`）。完整实验协议见 [`handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。

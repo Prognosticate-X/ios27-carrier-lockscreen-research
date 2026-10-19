@@ -1161,14 +1161,28 @@ def main() -> int:
             print("    Display: Dynamic Island (Screen layout width bounded)")
 
         # Two-Phase Auto Overwrite Coordinator
-        if args.force_overwrite and not args.reset:
-            deploy_with_two_phase_overwrite(
-                device["udid"],
-                payload,
-                verbose=args.verbose,
-                userspace_reboot=(not args.full_reboot),
-            )
-            return 0
+        if args.force_overwrite:
+            if args.reset:
+                print("\n" + "=" * 55)
+                print(" 🚀 EXECUTING RESET AUTO-EVICTION COORDINATOR")
+                print("=" * 55)
+                res = deploy_carrier(device["udid"], payload, verbose=args.verbose)
+                if not res["ok"]:
+                    print("\n[-] Reset deployment failed.", file=sys.stderr)
+                    return 2
+                reboot_style = "full" if args.full_reboot else "userspace"
+                print(f"[*] Reset archive deployed. Triggering {reboot_style} restart for SpringBoard auto-eviction...")
+                reboot_device(device["udid"], style=reboot_style)
+                print("\n[✓] Reset complete. SpringBoard will auto-evict the archive and restore native cellular settings.")
+                return 0
+            else:
+                deploy_with_two_phase_overwrite(
+                    device["udid"],
+                    payload,
+                    verbose=args.verbose,
+                    userspace_reboot=(not args.full_reboot),
+                )
+                return 0
 
         result = deploy_carrier(device["udid"], payload, verbose=args.verbose)
         if result["ok"]:

@@ -44,10 +44,16 @@ Our reverse engineering of `SBSystemStatusStatusBarOverridesArchiver` successful
    - ✅ **Offline / Unit Test**: Data structure creation and parsing validated (`tools/test_statusbar_archive.py`).
    - ✅ **Physical Hardware (End-to-End Confirmed)**: In commit [`dbb000cb`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/dbb000cb248e91a0ad53378a5f5d227d1540d562) and official documentation ([`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md)), lead maintainer `@awesomenull` updated the verification status to **`"Verified end-to-end by me and other users"`**. Real hardware tests confirmed byte-for-byte fidelity against physical iOS 27 dumps via `tools/deploy_statusbar_archive.py` and `tools/fetch_statusbar_archive.py`.
 4. **AirLift Channel — Physical End-to-End Verification (this repository)**: The in-repo AirLift channel was verified on **iPhone 16 Pro Max (iPhone17,2), iOS 27.0 (24A437)** over USB:
-   - ✅ **Byte-exact delivery**: the written `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` was fetched back through the AirTraffic readback asset and compared byte-for-byte with the payload.
+   - ✅ **Byte-exact delivery (24A437)**: the written `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` was fetched back through the AirTraffic readback asset and compared byte-for-byte with the payload. On iOS 27.0.1 (24A446) the AFC daemon refuses file reads outside `/var/mobile/Media`, so that readback is unavailable on the newer build (see limitation 6).
    - ✅ **Rendered on the device**: the custom carrier string (`CMHK`) is displayed in **Control Center** (Dynamic Island models do not render a carrier name in the home-screen status bar).
    - ✅ **Persistent**: once SpringBoard has adopted the record, the overrides survive full device reboots (see limitation 4).
    - ✅ **Failure handling**: injected Books-preimage drift was detected, rolled back and retried automatically, and every staging failure left zero residue (`airlift-*` trees and Books staging rows restored).
+5. **Upstream CommCenter Channel (Route A) — prepared and partially verified on iPhone 14 Pro / iOS 27.0.1 (24A446)**: the `InterCarrierRoamingDisplayNames` PLMN mapping is the only known way to rename the carrier while keeping live baseband bars and Airplane Mode decoupling, so the physical experiment is now wired end-to-end:
+   - ✅ **Target network identified**: the test device is on **China Unicom** (`中国联通`, PLMN `46001`/`46006`/`46009`/`46010`).
+   - ✅ **Verification surface**: the iPhone 14 Pro lock screen renders the carrier name next to the Dynamic Island, so the effect is observable from a screenshot without unlocking.
+   - ✅ **Recon boundary measured**: AFC can `stat` HomeDomain paths through the AirLift traversal link (`status=8` = missing, `status=10` = present), but **cannot read file data outside `/var/mobile/Media`** on this build; all candidate `com.apple.operator_*` / `com.apple.carrier_*` preference domains are absent on a stock device (writing them therefore creates new domains rather than overwriting settings).
+   - ✅ **Write channel confirmed on 24A446**: a probe override (`ZZTEST9`) written through AirLift appeared on the lock screen, and a SpringBoard-only respring does **not** clear an already-adopted override (a userspace/full reboot is required).
+   - ⏳ **Preference injection in progress**: `tools/commcenter_carrier_inject.py` builds and deploys the mapping; the conclusive on-device run is pending a device unlock (a full reboot leaves iOS in USB-restricted mode until the passcode is entered). Detailed handoff: [`docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md).
 
 ---
 
@@ -210,7 +216,24 @@ python3 tools/airlift_carrier_deploy.py --clean-device
 python3 tools/airlift_resilience_check.py --yes
 ```
 
-### 2. Standalone Archive Generator & Simulator Deployer (`tools/generate_statusbar_archive.py`)
+### 2. Upstream CommCenter Preference Experiment (Route A)
+```bash
+# Read-only HomeDomain recon through the AirLift traversal link (stat / list / read)
+python3 tools/device_path_probe.py --udid <UDID> \
+  --stat /var/mobile/Library/SpringBoard/StatusBarOverrides.archive
+
+# Build the InterCarrierRoamingDisplayNames mapping without touching a device
+python3 tools/commcenter_carrier_inject.py -c "Custom 5G" --plmn china_unicom --dry-run
+
+# Inject it into the per-slot operator domains (HomeDomain / Library/Preferences)
+python3 tools/commcenter_carrier_inject.py -c "Custom 5G" --plmn china_unicom
+
+# Visual verification: screenshots and Control Center gestures via CoreDevice HID
+python3 tools/device_ui.py screenshot control-center.png
+python3 tools/device_ui.py open-cc
+```
+
+### 3. Standalone Archive Generator & Simulator Deployer (`tools/generate_statusbar_archive.py`)
 ```bash
 # Generate a custom binary archive file
 python3 tools/generate_statusbar_archive.py -c " Apple 5G" -b 4 -t 5g -o custom.archive
@@ -237,6 +260,9 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 ├── tools/                                             # Automation and deployment toolchain
 │   ├── airlift_carrier_deploy.py                      # Universal AirLift physical device deployer CLI
 │   ├── airlift_resilience_check.py                    # Device-side retry/rollback resilience check (device writes, needs --yes)
+│   ├── commcenter_carrier_inject.py                   # Route A: InterCarrierRoamingDisplayNames preference injector
+│   ├── device_path_probe.py                           # Read-only HomeDomain stat/list/read probe via the AirLift link
+│   ├── device_ui.py                                   # CoreDevice HID gesture / screenshot verification helper
 │   ├── gui_server.py                                  # Bilingual web dashboard (deploy / repair / SpringBoard restart)
 │   ├── display_metrics.py                             # Dynamic Island width heuristics & truncation warnings
 │   ├── footnote_generator.py                          # Lock Screen footnote .mobileconfig generator
@@ -264,7 +290,8 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
     ├── handoffs/                                      # Chronological research handoff documents
     │   ├── iOS27_Carrier_LockScreen_Research_Handoff_2026-09-25.md
     │   ├── iOS27_Carrier_Footnote_Research_Handoff_2026-09-28.md
-    │   └── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   ├── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   └── iOS27_CommCenter_Preference_Injection_2026-10-19.md
     ├── iOS27_Carrier_Footnote_Solution.md             # Complete technical solution & security verdict
     ├── architecture.md                                # Full customization architecture & security boundaries
     ├── carrier-data-flow.md                           # SIM -> CommCenter -> SystemStatusUI reverse engineering

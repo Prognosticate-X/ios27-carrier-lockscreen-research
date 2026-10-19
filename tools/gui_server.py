@@ -440,11 +440,21 @@ HTML_PAGE = f"""<!DOCTYPE html>
         <label><span id="t_primaryBadgeLabel">主卡角标</span><span class="optional-tag" id="t_opt2">(可选)</span></label>
         <input type="text" id="primaryBadge" placeholder="如: P, 1">
       </div>
+      <div style="width: 110px;">
+        <label><span id="t_primaryTypeLabel">网络制式</span><span class="optional-tag" id="t_optType1">(可选)</span></label>
+        <select id="primaryType">
+          <option value="5g">5G</option>
+          <option value="5g+">5G+</option>
+          <option value="5g-uwb">5G Ultra</option>
+          <option value="lte">LTE</option>
+          <option value="4g">4G</option>
+          <option value="3g">3G</option>
+        </select>
+      </div>
       <div style="width: 120px;">
         <label><span id="t_primaryBarsLabel">信号格数</span><span class="optional-tag" id="t_opt3">(可选)</span></label>
         <select id="primaryBars">
-          <option value="" id="t_barsDefault1">默认 (不变)</option>
-          <option value="4" id="t_bars4_1">4 格 (满格)</option>
+          <option value="4" id="t_barsDefault1">4 格 (默认静态)</option>
           <option value="3" id="t_bars3_1">3 格</option>
           <option value="2" id="t_bars2_1">2 格</option>
           <option value="1" id="t_bars1_1">1 格</option>
@@ -463,14 +473,25 @@ HTML_PAGE = f"""<!DOCTYPE html>
         <label><span id="t_secBadgeLabel">副卡角标</span><span class="optional-tag" id="t_opt5">(可选)</span></label>
         <input type="text" id="secBadge" placeholder="如: S, 2">
       </div>
+      <div style="width: 110px;">
+        <label><span id="t_secTypeLabel">副卡制式</span><span class="optional-tag" id="t_optType2">(可选)</span></label>
+        <select id="secType">
+          <option value="5g">5G</option>
+          <option value="5g+">5G+</option>
+          <option value="5g-uwb">5G Ultra</option>
+          <option value="lte">LTE</option>
+          <option value="4g">4G</option>
+          <option value="3g">3G</option>
+        </select>
+      </div>
       <div style="width: 120px;">
         <label><span id="t_secBarsLabel">副卡信号</span><span class="optional-tag" id="t_opt6">(可选)</span></label>
         <select id="secBars">
-          <option value="" id="t_barsDefault2">默认 (不变)</option>
-          <option value="4" id="t_bars4_2">4 格</option>
+          <option value="4" id="t_barsDefault2">4 格 (默认静态)</option>
           <option value="3" id="t_bars3_2">3 格</option>
           <option value="2" id="t_bars2_2">2 格</option>
           <option value="1" id="t_bars1_2">1 格</option>
+          <option value="0" id="t_bars0_2">0 格</option>
         </select>
       </div>
     </div>
@@ -591,12 +612,14 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryCarrierPh: "例如：中国移动 5G (留空不覆盖名称)",
       primaryBadgeLabel: "主卡角标",
       primaryBadgePh: "如: P, 1",
+      primaryTypeLabel: "网络制式",
       primaryBarsLabel: "信号格数",
       cardTitleSecondary: "副卡设置 (Secondary SIM / 双卡可选)",
       secCarrierLabel: "副卡运营商名称",
       secCarrierPh: "例如：中国联通 5G (单卡用户请留空)",
       secBadgeLabel: "副卡角标",
       secBadgePh: "如: S, 2",
+      secTypeLabel: "副卡制式",
       secBarsLabel: "副卡信号",
       cardTitleFootnote: "锁屏底部脚注 (Footnote)",
       footnotePh: "Home 条正上方个性签名 (可选，例如:  Steve Jobs)",
@@ -661,12 +684,14 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryCarrierPh: "e.g., T-Mobile 5G (Leave empty to keep unchanged)",
       primaryBadgeLabel: "Primary Badge",
       primaryBadgePh: "e.g., P, 1",
+      primaryTypeLabel: "Network Type",
       primaryBarsLabel: "Signal Bars",
       cardTitleSecondary: "Secondary SIM (Dual SIM Optional)",
       secCarrierLabel: "Secondary Carrier Name",
       secCarrierPh: "e.g., Verizon 5G (Leave empty for Single SIM)",
       secBadgeLabel: "Secondary Badge",
       secBadgePh: "e.g., S, 2",
+      secTypeLabel: "Secondary Type",
       secBarsLabel: "Secondary Bars",
       cardTitleFootnote: "Lock Screen Footnote",
       footnotePh: "Signature above Home Bar (Optional, e.g.,  Steve Jobs)",
@@ -763,6 +788,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
     document.getElementById('primaryCarrier').placeholder = dict.primaryCarrierPh;
     document.getElementById('t_primaryBadgeLabel').innerText = dict.primaryBadgeLabel;
     document.getElementById('primaryBadge').placeholder = dict.primaryBadgePh;
+    document.getElementById('t_primaryTypeLabel').innerText = dict.primaryTypeLabel;
     document.getElementById('t_primaryBarsLabel').innerText = dict.primaryBarsLabel;
 
     document.getElementById('t_cardTitleSecondary').innerText = dict.cardTitleSecondary;
@@ -770,6 +796,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
     document.getElementById('secCarrier').placeholder = dict.secCarrierPh;
     document.getElementById('t_secBadgeLabel').innerText = dict.secBadgeLabel;
     document.getElementById('secBadge').placeholder = dict.secBadgePh;
+    document.getElementById('t_secTypeLabel').innerText = dict.secTypeLabel;
     document.getElementById('t_secBarsLabel').innerText = dict.secBarsLabel;
 
     document.getElementById('t_cardTitleFootnote').innerText = dict.cardTitleFootnote;
@@ -890,9 +917,11 @@ HTML_PAGE = f"""<!DOCTYPE html>
       carrier: document.getElementById('primaryCarrier').value.trim() || null,
       badge: document.getElementById('primaryBadge').value.trim() || null,
       bars: document.getElementById('primaryBars').value ? parseInt(document.getElementById('primaryBars').value) : null,
+      type: document.getElementById('primaryType').value || '5g',
       secondary_carrier: document.getElementById('secCarrier').value.trim() || null,
       secondary_badge: document.getElementById('secBadge').value.trim() || null,
       secondary_bars: document.getElementById('secBars').value ? parseInt(document.getElementById('secBars').value) : null,
+      secondary_type: document.getElementById('secType').value || '5g',
       force_overwrite: forceOverwrite,
     }};
 
@@ -1118,15 +1147,59 @@ def execute_deploy_worker(body: dict):
             details_en="Parsing fields and constructing NSKeyedArchiver bplist..." + transport_note_en,
         )
 
+        primary_type = NETWORK_TYPES.get(body.get("type", "5g"), 10)
+        secondary_type = NETWORK_TYPES.get(body.get("secondary_type", "5g"), 10)
+
         payload = build_cellular_archive(
             primary_carrier=body.get("carrier"),
             primary_bars=body.get("bars") if body.get("bars") is not None else 4,
+            primary_type=primary_type,
             primary_badge=body.get("badge"),
             secondary_carrier=body.get("secondary_carrier"),
             secondary_bars=body.get("secondary_bars") if body.get("secondary_bars") is not None else 4,
+            secondary_type=secondary_type,
             secondary_badge=body.get("secondary_badge"),
             is_reset=is_reset,
         )
+
+        if is_reset and force_overwrite:
+            set_progress(
+                30,
+                step_zh="复位自愈阶段: 清除已存在归档",
+                step_en="Reset Phase: Evicting Existing Archive",
+                details_zh="正在下发 self-eviction 重置载荷...",
+                details_en="Dispatching self-eviction payload...",
+            )
+            reset_payload = build_cellular_archive(is_reset=True)
+            res1 = deploy_carrier(udid, reset_payload)
+            if not res1.get("ok"):
+                set_progress(
+                    30,
+                    step_zh="复位注入失败",
+                    step_en="Reset Phase Failed",
+                    error_zh="清除旧文件阶段注入失败。",
+                    error_en="Failed to inject self-eviction payload.",
+                )
+                return
+
+            set_progress(
+                60,
+                step_zh="复位自愈阶段: 重启生效",
+                step_en="Reset Phase: Rebooting for Eviction",
+                details_zh="触发用户空间快速重启以触发 SpringBoard 磁盘自愈清理...",
+                details_en="Triggering userspace reboot for SpringBoard auto-eviction...",
+            )
+            reboot_device(udid, style="userspace")
+            wait_for_device_reconnect(udid, timeout_seconds=60)
+            set_progress(
+                100,
+                step_zh="复位完成",
+                step_en="Reset Completed",
+                details_zh="SpringBoard 已成功自愈清除旧归档并恢复官方原生运营商！",
+                details_en="SpringBoard self-evicted the archive and restored native carrier!",
+                completed=True,
+            )
+            return
 
         if force_overwrite and not is_reset:
             set_progress(

@@ -2,6 +2,7 @@
 #define AIRLIFT_TARGET_H
 
 #define AIRLIFT_TESTED_BUILDS(X) \
+    X(@"27.0.1", @"24A446")     \
     X(@"27.0", @"24A435")       \
     X(@"27.0", @"24A5390f")     \
     X(@"27.0", @"24A434")       \

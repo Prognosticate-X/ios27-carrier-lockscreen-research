@@ -67,3 +67,32 @@
    - **Step 2（上游偏好注入验证）**：由于 `/var/mobile/Library/Preferences/` 属主为 `mobile:mobile`（UID 501），完全在 AirLift 与 `HomeDomain` 备份恢复的可写范围内，测试向 `com.apple.operator_1.merged.plist` / `com.apple.operator_1.plist` / `com.apple.commcenter.carrier_bundle.plist` 注入 `InterCarrierRoamingDisplayNames`、`StatusBarImages` 与 `CarrierName`，验证 `cfprefsd` / `CommCenter` 重载后是否在不破坏 `.bundle` 签名的前提下动态生效。
 2. **路线 B（离线反编译 iOS 27 `CommCenter` 主程序）**：
    - 提取 iOS 27 IPSW 中的 `/System/Library/Frameworks/CoreTelephony.framework/Support/CommCenter` 可执行文件，反编译纯虚接口 `CarrierSettingsInterface` (`__ZTV24CarrierSettingsInterface` @ `0x1f5adf8c8`) 与 `NetworkNameFactoryInterface` (`__ZTV27NetworkNameFactoryInterface` @ `0x1f5adf858`) 的具体实现子类，100% 确定免验签缓存键的读取顺序。
+
+---
+
+## 五、2026-10-19 实机验证进展（iPhone 14 Pro / iOS 27.0.1 / 24A446）
+
+> 完整交接文档（含可复现命令与回滚方式）：[`docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)
+
+### 1. 已实测确认
+
+1. **测试机与网络**：iPhone 14 Pro（iPhone15,2），iOS 27.0.1（24A446）；当前 SIM 为 **中国联通**（PLMN `46001`/`46006`/`46009`/`46010`）。
+2. **验证面成立**：iPhone 14 Pro 锁屏左上角直接渲染运营商名，无需解锁即可通过 CoreDevice 截图验证渲染结果。
+3. **AFC 读取边界**：通过 AirLift 软链可对 `/var/mobile/Library/` 做 `stat`（`status=8` 不存在、`status=10` 存在但不可 stat），但 `read`/`list` 在 media 沙箱之外一律失败；因此 **当前构建不存在“回读偏好层 plist 内容”的 AFC 通道**。
+4. **偏好域在干净设备上不存在**：`com.apple.operator_1(.merged)`、`com.apple.carrier_1(.merged)`、`com.apple.commcenter.carrier_bundle`、`com.apple.commcenter.device_specific_nobackup` 全部 `status=8`；`/var/wireless/Library/Preferences` 与 `/var/preferences` 下的同名域同样不存在。
+5. **AirLift 写入通道复验**：探针名 `ZZTEST9` 成功写入 `StatusBarOverrides.archive` 并显示在锁屏，说明 24A446 上 ATAirlock 的覆盖写入在这个路径上可行。
+6. **仅 respring 不能清除静态覆写**：部署 `--reset` 空归档后 respring，锁屏仍显示旧覆写，必须用户空间/整机重启才能让系统重新读取归档（`systemstatusd` 内存态）。
+7. **整机重启的运维代价**：`devicectl reboot --style full` 后设备进入 USB 受限状态，`usbmux`/CoreDevice 均不可见，必须在设备上输入锁屏密码才恢复；`--style userspace` 不会打断 USB 连接。
+
+### 2. 对原假设的修正
+
+- 原研究报告假设“`com.apple.operator_1.merged.plist` 已存在，可直接改”。实测表明该文件在干净设备上**不存在**；路线 A 的实际动作是**新建 CFPreferences 域文件**。
+- 因此“注入后 cfprefsd 是否会把这个新域提供给 CommCenter”以及“CommCenter 的 `CarrierSettingsInterface` 究竟读 `mobile` 用户域还是 `_wireless` 用户域”成为两个必须由实机结果回答的问题。
+- 新增工具 `tools/commcenter_carrier_inject.py` 已按“新建域”模型实现：只写 `InterCarrierRoamingDisplayNames`（可选 `CarrierName`），payload 上限 512 KiB，仅允许 Preferences 目录与 8 个 `com.apple.operator_*`/`carrier_*` 域名。
+
+### 3. 待执行（设备解锁后）
+
+1. 过滤备份（pymobiledevice3 `backup2`）确认 HomeDomain 中真实的运营商配置落盘结构；
+2. 部署 reset 空归档 + userspace 重启，确认锁屏恢复 `中国联通` 与真实信号；
+3. 执行 `tools/commcenter_carrier_inject.py -c "联通 Dynamic" --plmn china_unicom` + userspace 重启；
+4. 依据锁屏是否变为 `联通 Dynamic` 给出阳性/阴性结论，并据此决定是否转向路线 B（DSC/IPSW 离线反编译 `CommCenter` 主程序）。
