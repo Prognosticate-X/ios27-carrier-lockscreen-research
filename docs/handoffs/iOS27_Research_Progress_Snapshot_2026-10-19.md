@@ -100,6 +100,28 @@ CC 顶部 `中国联通 5G` 与 Wi-Fi 同时出现的原因**不是归档覆写*
 3. **击穿实时域缓存**：只替换磁盘归档不够——`systemstatusd` 的实时覆写域会通过 `diskRecord recordByApplyingRecord:liveRecord`（live 优先）把旧记录盖回来。必须先 `SIGSTOP` SpringBoard、`SIGKILL` `systemstatusd`，完成替换后再 `SIGKILL` SpringBoard，才能让新的部分 entry 生效。
 4. **`recordByApplyingRecord:` 反汇编确认**（模拟器 SpringBoard，`0x5b5b50`）：实现就是 `[statusBarData dataByApplyingOverlay:other.statusBarData]`，即 **entry 级原子合并**；`isEmpty`（`0x5b5b08`）= `statusBarData.isEmpty` 且 suppressed 集合为空。
 
+### 3.0.2 归档器合并/写回逻辑（objdump 已完整还原）
+
+`-[SBSystemStatusStatusBarOverridesArchiver _queue_setupObservingAndReconcileInitialState]`（`0x5b50d4`，模拟器 SpringBoard）的实际流程：
+
+1. `live = [self._overridesDomain data]._sbSystemStatusStatusBarOverridesArchiveRecord`（**实时覆写域**记录）
+2. `disk = [self _queue_readStatusBarOverridesArchiveRecord]`（磁盘归档记录）
+3. 两者都存在时：`merged = [disk recordByApplyingRecord:live]` → `[self _queue_writeOutArchiveRecord:merged]` → 发布 `merged`。
+   - `recordByApplyingRecord:` 内部是 `[self.statusBarData dataByApplyingOverlay:other.statusBarData]`（`0x5b5b50`），**entry 级原子合并**，且 **live 覆盖 disk**。
+4. 只有 live：`_queue_writeOutArchiveRecord:live` → 发布。
+5. 只有 disk：直接发布 disk，**不调用 writeOut**。
+
+`_queue_writeOutArchiveRecord:`（`0x5b53e4`）：
+
+- `record == nil || [record isEmpty]` → `[[NSFileManager defaultManager] removeItemAtURL:_archiveFileURL error:]`（自删）；
+- 否则 → `archivedDataWithRootObject:requiringSecureCoding:` 后 `writeToURL:options:`。
+
+这解释了本轮遇到的所有现象：
+
+- **为什么空 reset 归档一直留在磁盘**：启动时只有 disk 记录（空），走“只有 disk”分支，直接发布、不 writeOut，所以不会触发自删。
+- **为什么新归档被覆盖回旧值**：`systemstatusd` 的 live 域里仍有旧记录，合并时 live 优先，随后 writeOut 把旧记录写回磁盘。
+- **为什么必须“冻结 SpringBoard + 杀 systemstatusd + 替换 + 杀 SpringBoard”**：只有让 live 域为空、并让 SpringBoard 重新启动，才能让磁盘上的新记录（部分 entry）成为权威来源。
+
 ### 3.0.2 仍未解决
 
 - 飞行模式联动：`status=5` 必须静态写入才能渲染名称，静态归档没有“跟随实时状态”的入口。
