@@ -226,8 +226,10 @@ xcrun devicectl device reboot --device 00008120-000934CA3E60C01E --style userspa
 - 单测 18 项全部通过（新增 partial archive 字段断言）；
 - README / README_ZH / 研究状态已更新推荐配置、GUI 用法与飞行模式限制说明。
 
-### 3.0.4 控制中心“5G + Wi-Fi 并排”是原生行为（16:43 验证）
+### 3.0.4 控制中心“5G + Wi-Fi 并排”是原生行为（17:06 最终验证）
 
-- 从设备取出当时磁盘上的归档：内容为 **S2**（`status=2` 的部分 entry），但它并未生效（生效时名称应为 S2）。
-- 移除该归档并重启 SpringBoard 后，锁屏显示 `中国联通` + Wi-Fi，**无 5G/LTE**；控制中心状态栏仍显示 `中国联通 5G` + Wi-Fi，且制式在两次截图间由 4G 变为 5G（实时值）。
-- 结论：iOS 27 的控制中心状态栏原生就同时渲染“运营商 + 实时制式 + Wi-Fi”；锁屏/主屏状态栏只显示运营商 + Wi-Fi。全量 entry 会把 `type` 钉死，`--partial` 省略 `type` 后制式文字被抑制（不是回退实时）。
+- 第一次移出读到的是旧的 672B **S2**；后续 GUI reset 已把它写成 **429B 空 reset 记录**。
+- 最终干净状态：移出的归档是 429B、**没有任何 cellularEntry**；systemstatusd 与 SpringBoard 均已杀死并重启（实时域清空、无归档）。
+- 该状态下：锁屏显示 `中国联通` + Wi-Fi、**无 5G/LTE**；控制中心状态栏仍显示 `中国联通 5G` + Wi-Fi。
+- 结论：iOS 27 控制中心状态栏原生就同时渲染“运营商 + 实时制式 + Wi-Fi”；锁屏/主屏状态栏只显示运营商 + Wi-Fi。制式跟随蜂窝数据开关（数据关掉即消失），不是 Wi-Fi 连接后自动隐藏。全量 entry 会把 `type` 钉死，`--partial` 省略 `type` 后制式文字被抑制。
+- 清理流程修正：先跑 move-out（Books 快照需要 SpringBoard 运行），再杀 systemstatusd/SpringBoard；若 helper 报 `afcStatus: -1`，先执行 `xcrun devicectl manage pair --device <udid>` 重新配对。
