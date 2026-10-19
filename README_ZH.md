@@ -53,6 +53,7 @@
    - ✅ **验证面**：iPhone 14 Pro 锁屏左上角会渲染运营商名，因此**无需解锁即可截图验证**。
    - ✅ **读取边界已实测**：AFC 能通过 AirLift 软链 `stat` HomeDomain 路径（`status=8` 不存在，`status=10` 存在但不可 stat），但**在该构建上无法读取 `/var/mobile/Media` 之外的文件内容**；同时所有 `com.apple.operator_*` / `com.apple.carrier_*` 偏好域在干净设备上均不存在（注入等于新建域，而非覆盖既有设置）。
    - ✅ **写入通道已在 24A446 复验**：通过 AirLift 写入的探针名 `ZZTEST9` 成功显示在锁屏；且仅 respring 不会清除已被系统采纳的静态覆写，需要用户空间/整机重启。
+   - 📌 **关于「显示域」路线的重要更正**：本项目的研究方向一直是**显示域覆写**。iOS ≤16 的旧版 `statusBarOverrides` C 结构体（`StatusBarOverrideData`）使用**逐字段 override flags**，Nugget/Cowabunga 可以只覆盖运营商字符串，而让真实基带信号与飞行模式行为继续生效。iOS 27 换成了 `STStatusBarData` 的**整对象 entry 替换**，这才是「静态化」退化的来源，而不是显示域思路本身。iOS 27 是否还存在部分覆写入口（archive 哨兵值、`recordByApplyingRecord:`、或锁屏等不同渲染面），是当前待验证的开放问题；见 [进度快照](docs/handoffs/iOS27_Research_Progress_Snapshot_2026-10-19.md)。
    - ❌ **路线 A 判定（24A446，本网）：阴性，且真实数据模型已完成取证**。已创建 12 个 HomeDomain 候选域（base / slot1 / slot2 × `operator` / `carrier` × 普通 / `.merged`），payload 含 `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`；解锁状态下通过 CoreDevice 信号通道冷启动 `cfprefsd`、`CommCenter`、`SpringBoard`，锁屏仍为 `中国联通`。随后完成的受信过滤备份显示真实布局：PLMN `46001`、`CarrierBundleName = 46001`，CommCenter 状态只存在于 **`WirelessDomain`**（`/var/wireless/Library/Preferences/com.apple.commcenter.plist` 等），整个 manifest 中没有任何 `operator_1`/`carrier_1` 域，显示名来自已签名系统 bundle `/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`。因此 HomeDomain 是错误的数据层，而 `/var/wireless` 与密封 bundle 在 mobile/AirLift 上下文中均不可写。12 个域已写回空字典。完整证据链见 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
 
 ---
@@ -299,7 +300,8 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
     │   ├── iOS27_Carrier_LockScreen_Research_Handoff_2026-09-25.md
     │   ├── iOS27_Carrier_Footnote_Research_Handoff_2026-09-28.md
     │   ├── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
-    │   └── iOS27_CommCenter_Preference_Injection_2026-10-19.md
+    │   ├── iOS27_CommCenter_Preference_Injection_2026-10-19.md
+    │   └── iOS27_Research_Progress_Snapshot_2026-10-19.md
     ├── iOS27_Carrier_Footnote_Solution.md             # 终局完整技术方案与安全裁决报告
     ├── architecture.md                                # 系统全景架构与安全边界报告
     ├── carrier-data-flow.md                           # SIM -> CommCenter -> SystemStatusUI 全链路逆向
