@@ -88,6 +88,31 @@ xcrun devicectl device reboot --device 00008120-000934CA3E60C01E --style userspa
 
 因此下一轮实验必须满足：**设备已解锁 → 写入 → 解锁状态下触发 CommCenter 重载 → 立即观察**，而不是“写入后重启再锁屏观察”。
 
+## 2.7 扩展域 + 强制重载：仍为阴性（15:00–15:02）
+
+设备解锁期间把实验推到最强条件：
+
+1. **域覆盖到全部候选**：base 域（`com.apple.operator` / `com.apple.carrier` 普通与 `.merged`）+ slot1 域，payload 同时包含 `InterCarrierRoamingDisplayNames`、`CarrierName`、`ShowCarrierName`（165 bytes）。
+2. **强制冷启动所有相关缓存**：通过 CoreDevice `send-signal-to-process` 对两个 `cfprefsd`、`CommCenter`、`SpringBoard` 发送 SIGTERM，四个进程全部由 launchd 重新拉起（新 PID 1321/1322/1323 + 新 SpringBoard）。
+3. **结果**：等待 12s 后截图，锁屏仍显示 `中国联通`，`DYNTEST2` 未出现。
+
+**结论**：在 iPhone 14 Pro / iOS 27.0.1（24A446）+ 中国联通（46001 本网）上，向 `com.apple.operator`/`com.apple.carrier` 偏好域注入 `InterCarrierRoamingDisplayNames` 或 `CarrierName`，**即使 cfprefsd/CommCenter/SpringBoard 全部冷启动也不会改变运营商显示名**。
+
+按可能性排序的解释：
+
+1. `CarrierSettingsInterface` 的 Operator bundle 数据来自**已签名 carrier bundle**（`Operator.plist` 等），而不是 CFPreferences 域；
+2. `InterCarrierRoamingDisplayNames` 只在**跨运营商漫游**场景被查询，本网（46001）不会命中；
+3. ATAirlock 创建的文件属主/保护类不被 cfprefsd 接受（要排除这一点需要 root 视角，备份 manifest 的文件元数据是唯一可行通道）。
+
+**清理**：12 个候选域（base/slot1/slot2 × operator/carrier × 普通/.merged）已全部写回**空字典**，设备锁屏保持原生 `中国联通`。
+
+**新增可复用能力**：CoreDevice 信号通道可以在不重启整机的情况下重启 cfprefsd/CommCenter/SpringBoard，用于验证任何“缓存/重载”假设：
+
+```bash
+.venv/bin/pymobiledevice3 developer core-device list-processes --userspace
+.venv/bin/pymobiledevice3 developer core-device send-signal-to-process <pid> 15 --userspace
+```
+
 ## 3. 待执行的关键实验（设备解锁后即可执行）
 
 前置：设备已解锁、点过“信任此电脑”。
@@ -164,7 +189,16 @@ PY
 
 ---
 
-## 4. 当前状态与阻塞
+## 4. 当前状态与结论（更新于 15:05）
+
+- **路线 A 判定：本网重命名阴性**。CFPreferences 偏好域注入（含 base/slot 域、`InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`、cfprefsd/CommCenter/SpringBoard 强制冷启动）均未改变运营商名。
+- **不能据此宣布机制彻底死亡**：仍存在“bundle 来源”“仅漫游触发”“文件属主/保护类被忽略”三种可能；其中前两种需要 `CommCenter` 主程序反编译（路线 B），第三种需要备份 manifest 元数据（需要设备解锁 + 信任弹窗密码）。
+- **设备当前状态**：无静态覆写，锁屏原生 `中国联通`；12 个实验域已写回空字典；USB 已连接。
+- **下一步优先级**：
+  1. 若你愿意在手机上完成一次“信任此电脑”并保持解锁，我可跑过滤备份，解析 `Manifest.db` 中 12 个域文件的 `Mode/OwnerID/GroupID/ProtectionClass`，一次性排除“属主/保护类”假设；
+  2. 否则转向路线 B：`pymobiledevice3 developer fetch-symbols` 拉取 24A446 的 dyld shared cache，提取 `libCommCenterBase.dylib` 并复核 `getLocalizedCompositeName` 的调用条件；必要时下载 IPSW 提取 `CommCenter` 主程序。
+
+## 5. 原“待执行”清单
 
 - 截至本文档写入时，设备因 **full reboot 处于 USB 受限状态**，需要用户在设备上解锁后恢复连接。
 - 偏好注入脚本、payload、单测、验证流程均已就绪；解锁后可直接执行 Step 0–3。

@@ -59,6 +59,10 @@ PREFERENCE_DIR = "/var/mobile/Library/Preferences"
 
 #: Domains that CommCenter's CarrierSettingsInterface is believed to consult.
 ALLOWED_DOMAINS = (
+    "com.apple.operator.plist",
+    "com.apple.operator.merged.plist",
+    "com.apple.carrier.plist",
+    "com.apple.carrier.merged.plist",
     "com.apple.operator_1.plist",
     "com.apple.operator_1.merged.plist",
     "com.apple.operator_2.plist",
@@ -121,6 +125,7 @@ def build_operator_plist(
     payload: Dict[str, Any] = {"InterCarrierRoamingDisplayNames": mapping}
     if include_carrier_name:
         payload["CarrierName"] = carrier_name
+        payload["ShowCarrierName"] = True
     return plistlib.dumps(payload, fmt=plistlib.FMT_BINARY, sort_keys=True)
 
 

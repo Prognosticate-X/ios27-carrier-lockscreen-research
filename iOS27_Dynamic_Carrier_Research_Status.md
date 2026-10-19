@@ -90,15 +90,29 @@
 - 因此“注入后 cfprefsd 是否会把这个新域提供给 CommCenter”以及“CommCenter 的 `CarrierSettingsInterface` 究竟读 `mobile` 用户域还是 `_wireless` 用户域”成为两个必须由实机结果回答的问题。
 - 新增工具 `tools/commcenter_carrier_inject.py` 已按“新建域”模型实现：只写 `InterCarrierRoamingDisplayNames`（可选 `CarrierName`），payload 上限 512 KiB，仅允许 Preferences 目录与 8 个 `com.apple.operator_*`/`carrier_*` 域名。
 
-### 3. 首轮注入结果（2026-10-19 14:41–14:45）
+### 3. 两轮实机注入与最终判定（2026-10-19 14:41–15:05）
 
-- 已向 4 个 `com.apple.operator_{1,2}{,.merged}.plist` 写入 `InterCarrierRoamingDisplayNames`（46001/46006/46009/46010 → `DYNTEST`），并补写 `com.apple.carrier_1.plist`；目标域从 `status=8`（不存在）变为 `status=10`（存在但元数据被拒），与已知偏好文件（`Accessibility`/`mobiletimer`/`Preferences` 均为 10）一致。
-- userspace 重启后锁屏仍为 `中国联通`，`DYNTEST` 未出现。
-- **该阴性结果不能否定假设**：偏好文件默认是 class C（`CompleteUntilFirstUserAuthentication`），本次启动后尚未首次解锁，cfprefsd/CommCenter 在启动时不可读这些新域；而 class A 的 `.GlobalPreferences.plist` 锁屏下仍可 stat 到 20845 bytes。
-- 另一个待排除项：若 ATAirlock 以 root 属主创建文件（0600），mobile 的 cfprefsd 将永远读不到；解锁后对目标域做 stat 可区分（class C + mobile → 可读；root → 仍 EPERM）。
+**第一轮（operator 域 + 用户空间重启）**：写入 4 个 `com.apple.operator_{1,2}{,.merged}.plist`（`46001/46006/46009/46010 → DYNTEST`）与 `com.apple.carrier_1.plist`，目标域从 `status=8` 变为 `status=10`；userspace 重启后锁屏仍为 `中国联通`。当时判断可能是“首次解锁前偏好不可读”的时序问题。
 
-### 4. 待执行（设备解锁后，修订版）
+**第二轮（全部候选域 + 全链路冷启动，设备解锁）**：
 
-1. 解锁后先 `stat` 目标域：可读（`st_size=126`）说明 class C + mobile 属主，机制测试有效；仍 EPERM 则需怀疑 root 属主并改用备份恢复写入；
-2. 解锁状态下重新注入（可加 `--include-carrier-name` 变体），**不重启**，先用飞行模式切换/进程重启强制 CommCenter 重载，再截图控制中心；
-3. 若仍无效，再用过滤备份读取真实偏好内容，并转向路线 B（DSC/IPSW 离线反编译 `CommCenter` 主程序，确认 `CarrierSettingsInterface` 的真实域名与 bundle 来源）。
+1. 覆盖 base 域（`com.apple.operator` / `com.apple.carrier` 普通与 `.merged`）与 slot1 域，payload 同时含 `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`（165 bytes）。
+2. 通过 CoreDevice `send-signal-to-process` 对两个 `cfprefsd`、`CommCenter`、`SpringBoard` 发送 SIGTERM，四个进程全部由 launchd 重新拉起。
+3. 结果：锁屏仍显示 `中国联通`，`DYNTEST2` 未出现。
+
+**判定**：在 iPhone 14 Pro / iOS 27.0.1（24A446）+ 中国联通（46001 本网）上，**CFPreferences 偏好域注入（`InterCarrierRoamingDisplayNames` 或 `CarrierName`）不会改变运营商显示名**，即使 cfprefsd/CommCenter/SpringBoard 全部冷启动。
+
+按可能性排序的解释：
+
+1. `CarrierSettingsInterface` 的 Operator 数据来自**已签名 carrier bundle**，CFPreferences 域不是数据源；
+2. `InterCarrierRoamingDisplayNames` 只在**跨运营商漫游**时被查询，本网不触发；
+3. ATAirlock 创建的文件属主/保护类不被 cfprefsd 接受（需要备份 manifest 的 `OwnerID/Mode/ProtectionClass` 才能排除）。
+
+**设备收尾**：12 个候选域已写回空字典；无静态覆写；锁屏为原生 `中国联通`。
+
+### 4. 下一步（路线 B 与读侧验证）
+
+1. **排除属主/保护类假设（成本最低，但需要人工）**：设备解锁并完成一次“信任此电脑”后，跑过滤备份，解析 `Manifest.db` 中 12 个域文件的 `Mode/OwnerID/GroupID/ProtectionClass`，确认 cfprefsd 是否本应读到它们。
+2. **路线 B：反编译 `CommCenter` 主程序**：`pymobiledevice3 developer fetch-symbols` 拉取 24A446 的 dyld shared cache，提取 `libCommCenterBase.dylib`，复核 `NetworkListOperator::getLocalizedCompositeName` 的调用条件（是否漫游门控、字典来源是 bundle 还是 prefs）；由于 `CommCenter` 主程序不在 DSC 内，必要时下载 IPSW 提取。
+3. **Carrier Bundle 侧排查**：通过 `dvt ls` 枚举 `/System/Library/Carrier Bundles/iPhone` 与 `/var/mobile/Library/Carrier Bundles/Overlay`，确认本网 bundle 是否包含 `InterCarrierRoamingDisplayNames`，以及 `VerifyBundles` 是否允许 overlay 覆盖。
+4. **保留可复用能力**：CoreDevice 信号通道（`send-signal-to-process`）可在不重启整机的前提下冷启动任何用户态守护进程，后续所有“缓存/重载”假设都可用它验证。

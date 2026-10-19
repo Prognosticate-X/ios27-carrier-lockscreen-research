@@ -53,7 +53,7 @@
    - ✅ **验证面**：iPhone 14 Pro 锁屏左上角会渲染运营商名，因此**无需解锁即可截图验证**。
    - ✅ **读取边界已实测**：AFC 能通过 AirLift 软链 `stat` HomeDomain 路径（`status=8` 不存在，`status=10` 存在但不可 stat），但**在该构建上无法读取 `/var/mobile/Media` 之外的文件内容**；同时所有 `com.apple.operator_*` / `com.apple.carrier_*` 偏好域在干净设备上均不存在（注入等于新建域，而非覆盖既有设置）。
    - ✅ **写入通道已在 24A446 复验**：通过 AirLift 写入的探针名 `ZZTEST9` 成功显示在锁屏；且仅 respring 不会清除已被系统采纳的静态覆写，需要用户空间/整机重启。
-   - 🔬 **首轮实机注入——结论未定（不构成证伪）**：`tools/commcenter_carrier_inject.py` 已把 4 个 operator 域全部写入（通过与已知偏好文件校准的 `status=8 → status=10` 变化确认），随后执行了用户空间重启。锁屏仍显示 `中国联通`；但设备重启后一直停在锁屏，而偏好文件属于 `NSFileProtectionCompleteUntilFirstUserAuthentication`——**本次启动首次解锁前不可读**（始终可读的 `.GlobalPreferences.plist` 仍能 stat 到 20845 bytes）。因此 CommCenter 在启动时根本读不到新域，该阴性结果不能否定 `InterCarrierRoamingDisplayNames` 假设。重测协议（解锁状态下写入 → 用飞行模式切换强制 CommCenter 重载 → 立即截图）已写入 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
+   - ❌ **路线 A 判定（24A446，本网）：阴性**。已创建 12 个候选域（base / slot1 / slot2 × `operator` / `carrier` × 普通 / `.merged`），payload 同时含 `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`；并在解锁状态下通过 CoreDevice 信号通道把 `cfprefsd`、`CommCenter`、`SpringBoard` 全部冷启动。锁屏运营商名仍为 `中国联通`。剩余解释：Operator 数据来自已签名 carrier bundle、字典仅漫游场景触发、或 ATAirlock 创建的文件不被 cfprefsd 接受（属主/保护类，只能用备份 manifest 元数据排除）。12 个域已写回空字典，设备已恢复原生运营商状态。完整证据链见 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
 
 ---
 
@@ -235,6 +235,10 @@ python3 tools/commcenter_carrier_inject.py -c "自定义 5G" --plmn china_unicom
 # 视觉验证：截图与 CoreDevice HID 控制中心手势
 python3 tools/device_ui.py screenshot control-center.png
 python3 tools/device_ui.py open-cc
+
+# 不重启整机，冷启动 cfprefsd / CommCenter / SpringBoard（root 信号通道）
+.venv/bin/pymobiledevice3 developer core-device list-processes --userspace
+.venv/bin/pymobiledevice3 developer core-device send-signal-to-process <pid> 15 --userspace
 ```
 
 ### 3. 独立归档生成器与模拟器部署 (`tools/generate_statusbar_archive.py`)

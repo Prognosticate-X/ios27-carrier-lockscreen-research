@@ -162,3 +162,16 @@ primary_bars=body.get("bars") if body.get("bars") is not None else 4
 3. **静态覆写与动态注入的判定隔离**：`StatusBarOverrides.archive` 的优先级高于实时蜂窝域，必须先用 reset 归档 + 用户空间重启确认锁屏回到原生 `中国联通`，才能把“锁屏文字变化”归因于 CommCenter 偏好注入，否则会得到假阴性。
 
 已就绪的注入工具：`tools/commcenter_carrier_inject.py`（只读工具 `tools/device_path_probe.py`、视觉验证 `tools/device_ui.py`）。完整实验协议见 [`handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
+
+### 6.1 实机结果：偏好层注入阴性
+
+在 iPhone 14 Pro / iOS 27.0.1（24A446）、中国联通（46001）上：
+
+- 12 个候选域（base / slot1 / slot2 × `operator` / `carrier` × 普通 / `.merged`）全部创建成功（`status=8 → 10`）；
+- payload 同时包含 `InterCarrierRoamingDisplayNames`、`CarrierName`、`ShowCarrierName`；
+- 设备解锁状态下，通过 CoreDevice 信号通道冷启动 `cfprefsd`（两个实例）、`CommCenter`、`SpringBoard`；
+- 锁屏运营商名仍为 `中国联通`。
+
+因此，§4.2 的“偏好层查表”在当前构建上**不是可用的重命名入口**。三种候选解释（bundle 来源 / 仅漫游触发 / 文件被 cfprefsd 忽略）需要 §6 的下一步分别验证；其中 `CommCenter` 主程序的 `CarrierSettingsInterface` 实现是路线 B 的核心目标。
+
+新增可复用原语：CoreDevice `send-signal-to-process` 可冷启动任意用户态守护进程，用于区分“缓存”与“真实不生效”。

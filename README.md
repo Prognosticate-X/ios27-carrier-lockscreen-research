@@ -53,7 +53,7 @@ Our reverse engineering of `SBSystemStatusStatusBarOverridesArchiver` successful
    - ✅ **Verification surface**: the iPhone 14 Pro lock screen renders the carrier name next to the Dynamic Island, so the effect is observable from a screenshot without unlocking.
    - ✅ **Recon boundary measured**: AFC can `stat` HomeDomain paths through the AirLift traversal link (`status=8` = missing, `status=10` = present), but **cannot read file data outside `/var/mobile/Media`** on this build; all candidate `com.apple.operator_*` / `com.apple.carrier_*` preference domains are absent on a stock device (writing them therefore creates new domains rather than overwriting settings).
    - ✅ **Write channel confirmed on 24A446**: a probe override (`ZZTEST9`) written through AirLift appeared on the lock screen, and a SpringBoard-only respring does **not** clear an already-adopted override (a userspace/full reboot is required).
-   - 🔬 **First on-device run — inconclusive (not a refutation)**: `tools/commcenter_carrier_inject.py` created all four operator domains (confirmed by the `status=8 → status=10` transition, calibrated against known preference files), and the device was userspace-rebooted. The lock screen still showed `中国联通` — but the device booted straight into the lock screen, and preference files are `NSFileProtectionCompleteUntilFirstUserAuthentication`, i.e. unreadable until the first unlock after boot (`.GlobalPreferences.plist`, which is always readable, still stat'ed at 20845 bytes). CommCenter therefore could not have read the new domains at startup. The retest protocol (unlocked write → force CommCenter reload via Airplane Mode toggle → screenshot) is documented in the [handoff](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md).
+   - ❌ **Route A verdict (24A446, home network): negative**. Twelve candidate domains (base / slot 1 / slot 2 × `operator` / `carrier` × plain / `.merged`) were created with `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`, and `cfprefsd`, `CommCenter` and `SpringBoard` were cold-restarted through the CoreDevice signal channel while the device was unlocked. The lock-screen carrier stayed `中国联通`. Remaining explanations: the Operator data is carrier-bundle sourced, the dictionary is roaming-only, or the ATAirlock-created files are not accepted by cfprefsd (ownership / protection class — only a backup-manifest read can settle that). The 12 domains were neutralised with empty dictionaries and the device is back to its native carrier. See the [handoff](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md) for the full evidence chain.
 
 ---
 
@@ -231,6 +231,10 @@ python3 tools/commcenter_carrier_inject.py -c "Custom 5G" --plmn china_unicom
 # Visual verification: screenshots and Control Center gestures via CoreDevice HID
 python3 tools/device_ui.py screenshot control-center.png
 python3 tools/device_ui.py open-cc
+
+# Restart cfprefsd / CommCenter / SpringBoard without rebooting (root signal channel)
+.venv/bin/pymobiledevice3 developer core-device list-processes --userspace
+.venv/bin/pymobiledevice3 developer core-device send-signal-to-process <pid> 15 --userspace
 ```
 
 ### 3. Standalone Archive Generator & Simulator Deployer (`tools/generate_statusbar_archive.py`)
