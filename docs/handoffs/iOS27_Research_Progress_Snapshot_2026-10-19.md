@@ -100,6 +100,23 @@ CC 顶部 `中国联通 5G` 与 Wi-Fi 同时出现的原因**不是归档覆写*
 3. **击穿实时域缓存**：只替换磁盘归档不够——`systemstatusd` 的实时覆写域会通过 `diskRecord recordByApplyingRecord:liveRecord`（live 优先）把旧记录盖回来。必须先 `SIGSTOP` SpringBoard、`SIGKILL` `systemstatusd`，完成替换后再 `SIGKILL` SpringBoard，才能让新的部分 entry 生效。
 4. **`recordByApplyingRecord:` 反汇编确认**（模拟器 SpringBoard，`0x5b5b50`）：实现就是 `[statusBarData dataByApplyingOverlay:other.statusBarData]`，即 **entry 级原子合并**；`isEmpty`（`0x5b5b08`）= `statusBarData.isEmpty` 且 suppressed 集合为空。
 
+### 3.0.3b SystemStatusUI 反汇编：名称显隐的精确条件（16:18）
+
+`STUIStatusBarCellularItem`（SystemStatusUI，独立 2.1MB 二进制）关键逻辑：
+
+- `applyUpdate:toDisplayItem:`（`0x2c1c`）的 name 分支（`0x3024`）：
+  `if (displayItem.isEnabled && entry.string.length > 0 && !entry.isBootstrapCellular) { [serviceNameView setText:entry.string]; [serviceNameView setAlternateText:entry.crossfadeString]; } else { displayItem.enabled = NO; }`
+- `_signalViewShouldBeEnabledForEntry:forceShowingDisabledSignalBars:signalMode:`（`0x2aa8`）的信号谓词：
+  - `status == 0` → 禁用；
+  - `status == 1` → 仅当 force/showsDisabledSignalBars 时启用；
+  - `status == 2` → 启用（signalMode 0）；
+  - `status == 3` → 启用（signalMode 1）；
+  - `status == 4` → 禁用；
+  - `status == 5` → 启用（signalMode 2，若传入 signalMode 指针）；
+  - `isBootstrapCellular` 时只有 `status == 5` 才启用。
+
+实测补充：status=2 仍然**不显示名称**（S2），而 status=5 显示（V4）。因此 name 分支依赖的 `displayItem.isEnabled` 在上游比信号谓词更严格——实际只有“已注册”（status=5）才会启用名称显示项。status=0/1/2/-1 全部隐藏名称。
+
 ### 3.0.3 `status` 取值矩阵结论（16:13）
 
 | `status` | 名称显示 |
@@ -109,7 +126,7 @@ CC 顶部 `中国联通 5G` 与 Wi-Fi 同时出现的原因**不是归档覆写*
 | 1 | ❌ 不显示（S1 实测） |
 | -1 | ❌ 不显示（V7 哨兵实测） |
 
-因此 **carrier string 的渲染被 `status=5` 门控**。`status` 是静态写入的字段，没有任何“跟随实时蜂窝状态”的哨兵或回退入口。
+因此 **carrier string 的渲染实际只在 `status=5`（已注册）时成立**（status=2 也不显示，说明名称显示项的 enabled 由上游注册状态决定）。`status` 是静态写入的字段，没有任何“跟随实时蜂窝状态”的哨兵或回退入口。
 
 结论：
 
@@ -160,7 +177,7 @@ Hopper 伪代码补充确认（`_queue_readStatusBarOverridesArchiveRecord` / `i
 ## 4. 下一步实验与逆向清单
 
 ### A. 显示域部分覆写（优先）
-1. ~~控制实验：`-b 0/1/3` 确认 `displayValue` 生效面~~ → 已完成：锁屏不生效（实时），CC 生效（覆写）。
+1. `控制实验：`-b 0/1/3` 确认 `displayValue` 生效面` → 已完成：锁屏不生效（实时），CC 生效（覆写）。
 2. **部分 entry 实验**：archive 中只写 `string` + `enabled=true` + `status=5`，省略 `displayValue`/`type`，观察锁屏与 CC 是 0 格、隐藏还是回退实时。
 3. **状态取值实验**：枚举 `enabled/status` 组合（true/5、true/0、false/0、省略），确认字符串显隐是否跟随实时蜂窝状态，寻找“飞行模式自动隐藏”的组合。
 4. **Sentinel 实验**：尝试 `displayValue = -1 / 255 / 0xFFFF` 等特殊值，观察是否被 UI 解释为“未覆写”。
