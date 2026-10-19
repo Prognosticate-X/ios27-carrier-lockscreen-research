@@ -43,29 +43,41 @@
 
 ---
 
-## 3. 新的关键观察（待控制实验确认）
+## 3. 控制实验结果（BARS1，2026-10-19 15:26–15:31）
 
-本轮 `ZZTEST9` 部署时指定 `-b 3 -t lte`，但锁屏右上角的蜂窝指示器仍显示 **4 点（满格）**。这提示：
+部署 `-c BARS1 -b 1 -t lte`（`displayValue=1`、`type=LTE`）后，respring，分别观察锁屏、Control Center、飞行模式：
 
-- 锁屏状态栏的蜂窝指示器**可能并不消费 archive 里的 `displayValue`**，而是继续使用实时遥测域数据；
-- 若属实，则“显示域改名 + 锁屏真实信号”在 iOS 27 上**可能已经部分成立**，剩下的问题只在飞行模式常驻与 Control Center 模块。
+| 渲染面 | 运营商名 | 信号指示 |
+|---|---|---|
+| 锁屏 | `BARS1` | **4 点（满格，实时值）** —— `displayValue=1` **未生效** |
+| Control Center | `BARS1 LTE+` | **1 格** —— `displayValue=1` **生效** |
+| 飞行模式：锁屏 | `BARS1` + ✈ | 蜂窝指示消失，但 **名称仍常驻** |
+| 飞行模式：CC | ✈ `BARS1` | 信号格消失，但 **名称仍常驻** |
 
-必须用控制实验确认（而不是从单张截图推断）：
+结论：
 
-1. 部署 `-b 1` / `-b 0` 的 archive，respring，锁屏截图对比蜂窝指示器；
-2. Control Center 打开后再截图，比较锁屏与 CC 两个渲染面；
-3. 若锁屏为真实信号而 CC 为固定值，则说明两个渲染面走不同数据源，需要分别对待。
+1. **锁屏的蜂窝信号指示器不消费 archive 的 `displayValue`**，而是继续使用实时遥测数据；Control Center 则消费覆写 entry（1 格、`LTE+`）。
+   这修正了此前“信号格在所有渲染面都被钉死”的说法：至少在 iPhone 14 Pro / 27.0.1 上，**锁屏=实时信号，CC=覆写值**。
+2. **飞行模式下运营商名仍然常驻**（锁屏与 CC 都是）。原因是覆写 entry 把 `enabled/status` 钉成了“已连接”，而名称的显隐并不跟随实时蜂窝状态。
+3. 因此用户记忆中的旧版 Nugget 行为在 iOS 27 上**只复现了一半**：
+   - ✅ 锁屏真实信号格（旧版：未覆盖字段透传）；
+   - ❌ 飞行模式不常驻（旧版：名称随蜂窝条目消失；现代 archive 不会）。
 
----
+## 3.1 为什么锁屏能保持实时信号（新假设）
+
+锁屏渲染面在视图层把“信号强度”和“运营商字符串”拆开了：信号取实时 `STTelephonyStatusDomain`，字符串取 `STStatusBarOverridesStatusDomain`。这与 UIKitCore 层“整 entry 原子替换”的结论并不矛盾——原子替换发生在 **overrides 域内部**，而锁屏的蜂窝信号视图可能绑定的是实时域。
+
+这意味着下一步的关键问题是：**字符串的显隐是否可以绑定到实时蜂窝状态**，从而在飞行模式下自动隐藏，而不影响信号/网络类型。
 
 ## 4. 下一步实验与逆向清单
 
 ### A. 显示域部分覆写（优先）
-1. **控制实验**：`-b 0/1/3` 三组 archive，分别截锁屏与 CC，确认 `displayValue` 在哪些渲染面生效。
+1. ~~控制实验：`-b 0/1/3` 确认 `displayValue` 生效面~~ → 已完成：锁屏不生效（实时），CC 生效（覆写）。
 2. **部分 entry 实验**：archive 中只写 `string` + `enabled=true` + `status=5`，省略 `displayValue`/`type`，观察锁屏与 CC 是 0 格、隐藏还是回退实时。
-3. **Sentinel 实验**：尝试 `displayValue = -1 / 255 / 0xFFFF` 等特殊值，观察是否被 UI 解释为“未覆写”。
-4. **归档器合并语义**：复核 `-[_SBSystemStatusStatusBarOverridesArchiveRecord recordByApplyingRecord:]` 与 `-[SBSystemStatusStatusBarOverridesArchiver _queue_setupObservingAndReconcileInitialState]`，确认磁盘记录与实时覆写记录的合并顺序，以及是否能保留实时字段。
-5. **类结构核对**：对 iOS 27 的 `STStatusBarDataCellularEntry` / `STStatusBarData` 做运行时 ivar 枚举（模拟器 `simctl spawn` 小工具或 dsc 提取），确认是否存在 `flags/override` 类字段或“未设置”哨兵。
+3. **状态取值实验**：枚举 `enabled/status` 组合（true/5、true/0、false/0、省略），确认字符串显隐是否跟随实时蜂窝状态，寻找“飞行模式自动隐藏”的组合。
+4. **Sentinel 实验**：尝试 `displayValue = -1 / 255 / 0xFFFF` 等特殊值，观察是否被 UI 解释为“未覆写”。
+5. **归档器合并语义**：复核 `-[_SBSystemStatusStatusBarOverridesArchiveRecord recordByApplyingRecord:]` 与 `-[SBSystemStatusStatusBarOverridesArchiver _queue_setupObservingAndReconcileInitialState]`，确认磁盘记录与实时覆写记录的合并顺序，以及是否能保留实时字段。
+6. **类结构核对**：对 iOS 27 的 `STStatusBarDataCellularEntry` / `STStatusBarData` 做运行时 ivar 枚举（模拟器 `simctl spawn` 小工具或 dsc 提取），确认是否存在 `flags/override` 类字段或“未设置”哨兵。
 
 ### B. 飞行模式联动
 1. 若锁屏/CC 的信号为实时，但运营商名在飞行模式下常驻，则需要找到让 `cellularEntry` 在蜂窝关闭时不被发布的方式；
