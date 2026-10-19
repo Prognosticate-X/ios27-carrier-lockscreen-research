@@ -189,6 +189,27 @@ PY
 
 ---
 
+## 3.5 备份取证：真实数据模型（15:16–15:20）
+
+在设备解锁并完成“信任此电脑”后，过滤备份成功（`Manifest.db` 17,511 行，24 MB）。关键证据：
+
+1. **本机网络参数**（`WirelessDomain/Library/Preferences/com.apple.commcenter.plist`）：
+   - `LastKnownServingMcc = 460`，`LastKnownServingMnc = 1` → **PLMN 46001**
+   - `CarrierBundleName = '46001'`
+   - `LastKnownICCID = '89860124801663304064'`
+2. **CommCenter 的真实持久化偏好全部位于 `WirelessDomain`**（`/var/wireless/Library/Preferences/`）：
+   - `com.apple.commcenter.plist`、`com.apple.commcenter.data.plist`、`com.apple.commcenter.lazuli.plist`、`com.apple.commcenter.travel.plist`、`com.apple.commcenter.country_bundle.plist`、`com.apple.CommCenter.counts.plist`、`com.apple.CommCenter.quickswitch.plist`、`com.apple.commcenter.callservices.plist`
+   - 整个 manifest 中**不存在**任何 `com.apple.operator_1` / `com.apple.carrier_1` 域文件。
+3. **`com.apple.carrier_1` 只是字符串**：在 `com.apple.commcenter.plist` 里该键的值是 `'46001'`（当前激活的 carrier bundle 标识），不是设置字典。
+4. **运营商数据源是已签名 carrier bundle**：`/System/Library/Carrier Bundles/iPhone/46001/` 包含 `carrier.plist`、`overrides_D73_D74_D27_D28.plist`、`signatures`、`overrides_*.der.pri`——位于 Sealed System Volume，mobile 不可写。
+5. **我们创建的 12 个 HomeDomain 域不在备份清单里**（尽管 stat 显示存在：存在=10、缺失=8）。backupd 是否因属主/系统域名单跳过它们仍未能确定，但无论哪种情况，它们都不是 CommCenter 的运营商数据来源。
+
+### 结论（最终）
+
+- iOS 27.0.1 上运营商显示名来自**已签名 carrier bundle**；CommCenter 的运行时状态在 **`/var/wireless`**（属于 `_wireless`，AirLift 的 mobile 上下文不可写）。
+- 因此 **路线 A（HomeDomain CFPreferences 注入）在无越狱、无提权写原语的前提下不可行**；`InterCarrierRoamingDisplayNames` 即使存在于 bundle 的 `carrier.plist` 中，也无法在不破坏签名的前提下注入。
+- 动态运营商（真实信号 + 飞行模式联动）在本项目的非越狱能力边界内**没有可用写入路径**；静态 `StatusBarOverrides.archive` 仍是唯一可工作的方案，其“信号钉死/飞行模式常驻”的限制保持不变。
+
 ## 4. 当前状态与结论（更新于 15:05）
 
 - **路线 A 判定：本网重命名阴性**。CFPreferences 偏好域注入（含 base/slot 域、`InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`、cfprefsd/CommCenter/SpringBoard 强制冷启动）均未改变运营商名。

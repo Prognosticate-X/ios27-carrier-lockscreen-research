@@ -175,3 +175,16 @@ primary_bars=body.get("bars") if body.get("bars") is not None else 4
 因此，§4.2 的“偏好层查表”在当前构建上**不是可用的重命名入口**。三种候选解释（bundle 来源 / 仅漫游触发 / 文件被 cfprefsd 忽略）需要 §6 的下一步分别验证；其中 `CommCenter` 主程序的 `CarrierSettingsInterface` 实现是路线 B 的核心目标。
 
 新增可复用原语：CoreDevice `send-signal-to-process` 可冷启动任意用户态守护进程，用于区分“缓存”与“真实不生效”。
+
+### 6.2 备份取证：真实数据模型（决定性）
+
+受信过滤备份（`Manifest.db` 17,511 行）显示：
+
+- 本机 PLMN `46001`（`LastKnownServingMcc=460`、`Mnc=1`、`CarrierBundleName='46001'`）；
+- CommCenter 的持久化状态全部位于 `WirelessDomain`（`/var/wireless/Library/Preferences/com.apple.commcenter.*`）；
+- 整个 manifest 中**不存在** `com.apple.operator_1` / `com.apple.carrier_1` 域；`com.apple.commcenter.plist` 中的 `com.apple.carrier_1` 只是字符串 `'46001'`；
+- 运营商显示名来自已签名系统 bundle `/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`（含 `signatures` 与 `.der.pri`）。
+
+**结论**：§4.3 中“`/var/mobile/Library/Preferences/` 映射”在当前 iOS 27.0.1 上不成立——该目录不是运营商数据层。真正的数据层（`/var/wireless` 与密封 bundle）在非越狱/mobile 上下文中不可写，因此本文档描述的上游动态路线**没有可落地的注入原语**；静态 `StatusBarOverrides` 仍是唯一可用方案。
+
+后续若要继续：需 IPSW 提取 `carrier.plist` 与 `CommCenter` 主程序，确认 `InterCarrierRoamingDisplayNames` 的读取位置与门控（纯研究，不改变不可写结论）。

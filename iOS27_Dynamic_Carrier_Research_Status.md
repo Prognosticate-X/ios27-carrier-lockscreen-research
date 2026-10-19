@@ -102,17 +102,20 @@
 
 **判定**：在 iPhone 14 Pro / iOS 27.0.1（24A446）+ 中国联通（46001 本网）上，**CFPreferences 偏好域注入（`InterCarrierRoamingDisplayNames` 或 `CarrierName`）不会改变运营商显示名**，即使 cfprefsd/CommCenter/SpringBoard 全部冷启动。
 
-按可能性排序的解释：
+### 4. 备份取证与最终结论（15:16–15:20）
 
-1. `CarrierSettingsInterface` 的 Operator 数据来自**已签名 carrier bundle**，CFPreferences 域不是数据源；
-2. `InterCarrierRoamingDisplayNames` 只在**跨运营商漫游**时被查询，本网不触发；
-3. ATAirlock 创建的文件属主/保护类不被 cfprefsd 接受（需要备份 manifest 的 `OwnerID/Mode/ProtectionClass` 才能排除）。
+设备解锁并完成“信任此电脑”后，过滤备份成功（`Manifest.db` 17,511 行）。真实数据模型：
 
-**设备收尾**：12 个候选域已写回空字典；无静态覆写；锁屏为原生 `中国联通`。
+1. **网络参数**：`LastKnownServingMcc = 460`、`LastKnownServingMnc = 1`（PLMN 46001），`CarrierBundleName = '46001'`。
+2. **CommCenter 状态位置**：全部在 **`WirelessDomain`**（`/var/wireless/Library/Preferences/`）：
+   `com.apple.commcenter.plist`、`.data`、`.lazuli`、`.travel`、`.country_bundle`、`com.apple.CommCenter.counts`、`.quickswitch`、`.callservices`。
+3. **不存在 `operator`/`carrier` 偏好域**：整个 manifest 中没有 `com.apple.operator_1` / `com.apple.carrier_1` 文件；`com.apple.commcenter.plist` 里的 `com.apple.carrier_1` 只是字符串 `'46001'`。
+4. **运营商显示名来源**：已签名系统 bundle `/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`（附 `overrides_D73_D74_D27_D28.plist`、`signatures`、`.der.pri`），位于 Sealed System Volume。
+5. **我们创建的 12 个 HomeDomain 域不在备份清单中**（尽管 stat 显示存在：存在=10、缺失=8）；无论 backupd 是出于属主还是系统域名单跳过，它们都不是 CommCenter 的运营商数据来源。
 
-### 4. 下一步（路线 B 与读侧验证）
+**最终结论**：
 
-1. **排除属主/保护类假设（成本最低，但需要人工）**：设备解锁并完成一次“信任此电脑”后，跑过滤备份，解析 `Manifest.db` 中 12 个域文件的 `Mode/OwnerID/GroupID/ProtectionClass`，确认 cfprefsd 是否本应读到它们。
-2. **路线 B：反编译 `CommCenter` 主程序**：`pymobiledevice3 developer fetch-symbols` 拉取 24A446 的 dyld shared cache，提取 `libCommCenterBase.dylib`，复核 `NetworkListOperator::getLocalizedCompositeName` 的调用条件（是否漫游门控、字典来源是 bundle 还是 prefs）；由于 `CommCenter` 主程序不在 DSC 内，必要时下载 IPSW 提取。
-3. **Carrier Bundle 侧排查**：通过 `dvt ls` 枚举 `/System/Library/Carrier Bundles/iPhone` 与 `/var/mobile/Library/Carrier Bundles/Overlay`，确认本网 bundle 是否包含 `InterCarrierRoamingDisplayNames`，以及 `VerifyBundles` 是否允许 overlay 覆盖。
-4. **保留可复用能力**：CoreDevice 信号通道（`send-signal-to-process`）可在不重启整机的前提下冷启动任何用户态守护进程，后续所有“缓存/重载”假设都可用它验证。
+- 在非越狱、无提权写原语的能力边界内，**动态运营商（真实信号 + 飞行模式联动）没有可用写入路径**：真正的数据在 `/var/wireless`（`_wireless` 属主）与密封的已签名 carrier bundle 中，mobile/AirLift 均不可写；`InterCarrierRoamingDisplayNames` 即使存在于 bundle 中，也无法在不破坏签名的前提下注入。
+- 静态 `StatusBarOverrides.archive` 仍是唯一可工作的非越狱方案，其“信号钉死、飞行模式常驻”的限制保持不变。
+- 若未来获得以下任一原语，本路线可重新评估：① 对 `/var/wireless` 的 root 写；② 能通过签名校验的 carrier bundle overlay；③ 运行期注入 `CommCenter`（越狱/tweak）。
+- 仍可选的纯研究（无写入能力）：通过 IPSW 提取 `carrier.plist` 与 `CommCenter` 主程序，确认 `InterCarrierRoamingDisplayNames` 的真实读取位置与门控条件；这不会改变上述“不可写”的结论。

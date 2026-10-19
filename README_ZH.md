@@ -17,7 +17,7 @@
 |---|---|---|---|
 | **锁屏底部脚注 (Footnote)** | 🟢 **完全可用** | `com.apple.shareddeviceconfiguration` 体系下的 `SharedDeviceConfiguration.plist` | **全机型通用 (100%)** — Apple 官方标准描述文件 (`.mobileconfig`) 通道或通过 `SysSharedContainerDomain` 保护性备份注入。完全零风险、免越狱（部分企业/受限设备可能要求监督模式）。 |
 | **运营商名称覆写 (静态)** | 🟢 **物理真机实测通过 (重大突破)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **物理真机端到端全量验证通过** — 已被主流定制套件 [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget)（v9.5.1 / v9.5.2）正式合并并全面发布。GoldenNugget 核心维护者 `@awesomenull` 及社区多位真实用户已通过 `HomeDomain` 备份恢复管道在真实设备上完成验证，官方文档已正式确立为 **“Verified end-to-end by me and other users”**。整项静态锁定（飞行模式下常驻/信号格数固定）。 |
-| **动态运营商与真实基带信号 (上游)** | 🔬 **逆向工程重大突破** | `CommCenter` / `libCommCenterBase` PLMN 字典映射机制 (`InterCarrierRoamingDisplayNames`) | **唯一可行上游主方向** — 汇编反编译彻底证伪了 `StatusBarData` 字段级透传（整对象原子指针替换）与 `SystemStatusDefaults` 覆写。突破发现 `NetworkListOperator::getLocalizedCompositeName` (`0x1b3db050c`) 的 PLMN 查表替换与 `/var/mobile/Library/Preferences/`（`com.apple.operator_1.merged.plist`）偏好映射层，**100% 保持真实基带信号与飞行模式联动**。详见 [`iOS27_Dynamic_Carrier_Research_Status.md`](iOS27_Dynamic_Carrier_Research_Status.md) 与 [`docs/commcenter-dynamic-carrier-reverse-engineering.md`](docs/commcenter-dynamic-carrier-reverse-engineering.md)。 |
+| **动态运营商与真实基带信号 (上游)** | 🔴 **实机证伪（iOS 27.0.1）** | 已签名 carrier bundle（`/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`）+ `/var/wireless/Library/Preferences/` 下的 CommCenter 状态 | **非越狱条件下没有可用写入路径** —— 反汇编排除了 `StatusBarData` 字段级覆写；iPhone 14 Pro（27.0.1）实机实验进一步证明：HomeDomain 中不存在任何运营商名数据，CommCenter 状态位于 `WirelessDomain`（属主 `_wireless`，mobile/AirLift 不可写），显示名来自已签名 bundle。向 12 个 HomeDomain 域注入 `InterCarrierRoamingDisplayNames`/`CarrierName` 并冷启动 cfprefsd/CommCenter/SpringBoard 后均无效。静态 `StatusBarOverrides.archive` 仍是唯一可用方案。证据见 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。 |
 
 ---
 
@@ -53,7 +53,7 @@
    - ✅ **验证面**：iPhone 14 Pro 锁屏左上角会渲染运营商名，因此**无需解锁即可截图验证**。
    - ✅ **读取边界已实测**：AFC 能通过 AirLift 软链 `stat` HomeDomain 路径（`status=8` 不存在，`status=10` 存在但不可 stat），但**在该构建上无法读取 `/var/mobile/Media` 之外的文件内容**；同时所有 `com.apple.operator_*` / `com.apple.carrier_*` 偏好域在干净设备上均不存在（注入等于新建域，而非覆盖既有设置）。
    - ✅ **写入通道已在 24A446 复验**：通过 AirLift 写入的探针名 `ZZTEST9` 成功显示在锁屏；且仅 respring 不会清除已被系统采纳的静态覆写，需要用户空间/整机重启。
-   - ❌ **路线 A 判定（24A446，本网）：阴性**。已创建 12 个候选域（base / slot1 / slot2 × `operator` / `carrier` × 普通 / `.merged`），payload 同时含 `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`；并在解锁状态下通过 CoreDevice 信号通道把 `cfprefsd`、`CommCenter`、`SpringBoard` 全部冷启动。锁屏运营商名仍为 `中国联通`。剩余解释：Operator 数据来自已签名 carrier bundle、字典仅漫游场景触发、或 ATAirlock 创建的文件不被 cfprefsd 接受（属主/保护类，只能用备份 manifest 元数据排除）。12 个域已写回空字典，设备已恢复原生运营商状态。完整证据链见 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
+   - ❌ **路线 A 判定（24A446，本网）：阴性，且真实数据模型已完成取证**。已创建 12 个 HomeDomain 候选域（base / slot1 / slot2 × `operator` / `carrier` × 普通 / `.merged`），payload 含 `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`；解锁状态下通过 CoreDevice 信号通道冷启动 `cfprefsd`、`CommCenter`、`SpringBoard`，锁屏仍为 `中国联通`。随后完成的受信过滤备份显示真实布局：PLMN `46001`、`CarrierBundleName = 46001`，CommCenter 状态只存在于 **`WirelessDomain`**（`/var/wireless/Library/Preferences/com.apple.commcenter.plist` 等），整个 manifest 中没有任何 `operator_1`/`carrier_1` 域，显示名来自已签名系统 bundle `/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`。因此 HomeDomain 是错误的数据层，而 `/var/wireless` 与密封 bundle 在 mobile/AirLift 上下文中均不可写。12 个域已写回空字典。完整证据链见 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
 
 ---
 
