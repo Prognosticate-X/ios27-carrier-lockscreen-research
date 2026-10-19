@@ -116,6 +116,13 @@ CC 顶部 `中国联通 5G` 与 Wi-Fi 同时出现的原因**不是归档覆写*
 - `record == nil || [record isEmpty]` → `[[NSFileManager defaultManager] removeItemAtURL:_archiveFileURL error:]`（自删）；
 - 否则 → `archivedDataWithRootObject:requiringSecureCoding:` 后 `writeToURL:options:`。
 
+Hopper 伪代码补充确认（`_queue_readStatusBarOverridesArchiveRecord` / `initWithStatusBarData:`）：
+
+- 读取时先尝试 `_SBSystemStatusStatusBarOverridesArchiveRecord`；失败则**回退旧格式** `STStatusBarData`；仍失败才返回 nil。
+- `initWithStatusBarData:andSuppressedBackgroundActivityIdentifiers:` 在 `[record isEmpty]` 时**直接返回 nil**（并打日志 "is empty!"）。因此空 reset 归档在读取阶段就变成 nil，等价于“没有磁盘记录”，后面自然不会触发 writeOut/自删。
+- `_queue_writeOutArchiveRecord:` 先做 `BSEqualObjects` 去重；只有记录为 nil/空才 `removeItemAtURL:`。
+- `_queue_persistUpdatedArchiveRecord:` 同样先去重，再写盘。
+
 这解释了本轮遇到的所有现象：
 
 - **为什么空 reset 归档一直留在磁盘**：启动时只有 disk 记录（空），走“只有 disk”分支，直接发布、不 writeOut，所以不会触发自删。
