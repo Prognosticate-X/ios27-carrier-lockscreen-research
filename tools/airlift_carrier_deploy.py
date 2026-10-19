@@ -97,6 +97,7 @@ def build_cellular_archive(
     secondary_type: int = 10,
     secondary_badge: Optional[str] = None,
     is_reset: bool = False,
+    partial: bool = False,
 ) -> bytes:
     """Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard."""
     if primary_carrier and len(primary_carrier) > MAX_CARRIER_LENGTH:
@@ -205,6 +206,9 @@ def build_cellular_archive(
             "type": primary_type,
             "wifiCallingEnabled": False,
         }
+        if partial:
+            p_entry.pop("displayValue", None)
+            p_entry.pop("type", None)
         uid_p_entry = add_obj(p_entry)
         data_dict["cellularEntry"] = uid_p_entry
 
@@ -231,6 +235,9 @@ def build_cellular_archive(
             "type": secondary_type,
             "wifiCallingEnabled": False,
         }
+        if partial:
+            s_entry.pop("displayValue", None)
+            s_entry.pop("type", None)
         uid_s_entry = add_obj(s_entry)
         data_dict["secondaryCellularEntry"] = uid_s_entry
 
@@ -999,6 +1006,7 @@ def main() -> int:
     parser.add_argument("--secondary-bars", type=int, default=4, choices=range(0, 5), help="Secondary Signal Bars (default: 4)")
     parser.add_argument("--secondary-type", default="5g", choices=NETWORK_TYPES.keys(), help="Secondary Network Type (default: 5g)")
     parser.add_argument("--secondary-badge", help="Secondary SIM Badge (e.g. 'S', '副卡')")
+    parser.add_argument("--partial", action="store_true", help="Partial override: keep live signal bars and hide the network-type label (omit displayValue/type)")
     parser.add_argument("--reset", action="store_true", help="Reset/Clear overrides to restore native carrier")
 
     # Enhanced options
@@ -1136,6 +1144,7 @@ def main() -> int:
             secondary_type=NETWORK_TYPES[args.secondary_type],
             secondary_badge=args.secondary_badge,
             is_reset=args.reset,
+            partial=args.partial,
         )
         print(f"[✓] Archive generated successfully ({len(payload)} bytes).")
 

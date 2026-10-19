@@ -56,6 +56,28 @@ class TestAirliftFeatures(unittest.TestCase):
         payload_reset = build_cellular_archive(is_reset=True)
         self.assertTrue(len(payload_reset) < len(payload_single))
 
+    def test_partial_archive_keeps_live_fields(self):
+        """Partial mode must drop displayValue/type while keeping name + registration."""
+        import plistlib
+
+        from airlift_carrier_deploy import build_cellular_archive
+
+        payload = build_cellular_archive(primary_carrier="Partial", partial=True)
+        plist = plistlib.loads(payload)
+        objects = plist["$objects"]
+
+        def resolve(value):
+            return objects[value.data] if isinstance(value, plistlib.UID) else value
+
+        record = resolve(plist["$top"]["root"])
+        data = resolve(record["statusBarData"])
+        entry = resolve(data["cellularEntry"])
+        self.assertNotIn("displayValue", entry)
+        self.assertNotIn("type", entry)
+        self.assertEqual(resolve(entry["string"]), "Partial")
+        self.assertTrue(entry["enabled"])
+        self.assertEqual(entry["status"], 5)
+
     def test_footnote_generator(self):
         data = generate_footnote_profile("Test Footnote Text")
         self.assertIn(b"com.apple.shareddeviceconfiguration", data)

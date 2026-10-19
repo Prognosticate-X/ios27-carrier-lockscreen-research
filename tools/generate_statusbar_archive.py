@@ -40,6 +40,7 @@ def build_cellular_archive(
     secondary_type: int = 10,
     secondary_badge: Optional[str] = None,
     is_reset: bool = False,
+    partial: bool = False,
 ) -> bytes:
     """
     Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard.
@@ -155,6 +156,9 @@ def build_cellular_archive(
             "type": primary_type,
             "wifiCallingEnabled": False,
         }
+        if partial:
+            p_entry.pop("displayValue", None)
+            p_entry.pop("type", None)
         uid_p_entry = add_obj(p_entry)
         data_dict["cellularEntry"] = uid_p_entry
 
@@ -181,6 +185,9 @@ def build_cellular_archive(
             "type": secondary_type,
             "wifiCallingEnabled": False,
         }
+        if partial:
+            s_entry.pop("displayValue", None)
+            s_entry.pop("type", None)
         uid_s_entry = add_obj(s_entry)
         data_dict["secondaryCellularEntry"] = uid_s_entry
 
@@ -247,6 +254,7 @@ def main():
     parser.add_argument("--secondary-type", default="5g", choices=list(NETWORK_TYPES.keys()), help="Secondary Network type")
     parser.add_argument("--secondary-badge", help="Secondary SIM badge (e.g. 'S', '2', '副卡')")
     parser.add_argument("--reset", action="store_true", help="Generate an empty reset archive to restore system default")
+    parser.add_argument("--partial", action="store_true", help="Partial override: keep live signal bars and hide the network-type label (omit displayValue/type)")
     parser.add_argument("-i", "--inspect", help="Inspect an existing archive file")
     parser.add_argument("-o", "--output", default="StatusBarOverrides.archive", help="Output archive path")
     parser.add_argument("--deploy-simulator", nargs="?", const="booted", help="Deploy archive directly to a booted simulator (or specify UDID) and reload SpringBoard")
@@ -272,6 +280,7 @@ def main():
         secondary_type=NETWORK_TYPES[args.secondary_type],
         secondary_badge=args.secondary_badge,
         is_reset=args.reset,
+        partial=args.partial,
     )
 
     with open(args.output, "wb") as f:

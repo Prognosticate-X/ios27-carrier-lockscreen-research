@@ -463,6 +463,14 @@ HTML_PAGE = f"""<!DOCTYPE html>
       </div>
     </div>
 
+    <div class="row" style="align-items: center; gap: 10px; margin-top: 2px;">
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+        <input type="checkbox" id="partialMode" style="width: 16px; height: 16px;">
+        <span id="t_partialLabel">保留实时信号格（部分覆写）</span>
+      </label>
+      <span class="optional-tag" id="t_partialHint">不写 displayValue/type；信号格与制式回退实时，名称仍可能飞行模式常驻</span>
+    </div>
+
     <div class="card-title" style="margin-top: 4px;" id="t_cardTitleSecondary">副卡设置 (Secondary SIM / 双卡可选)</div>
     <div class="row">
       <div class="col">
@@ -614,6 +622,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryBadgePh: "如: P, 1",
       primaryTypeLabel: "网络制式",
       primaryBarsLabel: "信号格数",
+      partialLabel: "保留实时信号格（部分覆写）",
+      partialHint: "不写 displayValue/type；信号格与制式回退实时，名称仍可能飞行模式常驻",
       cardTitleSecondary: "副卡设置 (Secondary SIM / 双卡可选)",
       secCarrierLabel: "副卡运营商名称",
       secCarrierPh: "例如：中国联通 5G (单卡用户请留空)",
@@ -686,6 +696,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryBadgePh: "e.g., P, 1",
       primaryTypeLabel: "Network Type",
       primaryBarsLabel: "Signal Bars",
+      partialLabel: "Live signal bars (partial override)",
+      partialHint: "Omit displayValue/type: bars and network type fall back to live data; the name may still persist in Airplane Mode",
       cardTitleSecondary: "Secondary SIM (Dual SIM Optional)",
       secCarrierLabel: "Secondary Carrier Name",
       secCarrierPh: "e.g., Verizon 5G (Leave empty for Single SIM)",
@@ -790,6 +802,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
     document.getElementById('primaryBadge').placeholder = dict.primaryBadgePh;
     document.getElementById('t_primaryTypeLabel').innerText = dict.primaryTypeLabel;
     document.getElementById('t_primaryBarsLabel').innerText = dict.primaryBarsLabel;
+    document.getElementById('t_partialLabel').innerText = dict.partialLabel;
+    document.getElementById('t_partialHint').innerText = dict.partialHint;
 
     document.getElementById('t_cardTitleSecondary').innerText = dict.cardTitleSecondary;
     document.getElementById('t_secCarrierLabel').innerText = dict.secCarrierLabel;
@@ -918,6 +932,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
       badge: document.getElementById('primaryBadge').value.trim() || null,
       bars: document.getElementById('primaryBars').value ? parseInt(document.getElementById('primaryBars').value) : null,
       type: document.getElementById('primaryType').value || '5g',
+      partial: document.getElementById('partialMode').checked,
       secondary_carrier: document.getElementById('secCarrier').value.trim() || null,
       secondary_badge: document.getElementById('secBadge').value.trim() || null,
       secondary_bars: document.getElementById('secBars').value ? parseInt(document.getElementById('secBars').value) : null,
@@ -1122,6 +1137,7 @@ def execute_deploy_worker(body: dict):
     try:
         is_reset = body.get("reset", False)
         force_overwrite = body.get("force_overwrite", False)
+        partial = bool(body.get("partial", False))
 
         target_device, wired = find_target_device()
         if not target_device:
@@ -1160,6 +1176,7 @@ def execute_deploy_worker(body: dict):
             secondary_type=secondary_type,
             secondary_badge=body.get("secondary_badge"),
             is_reset=is_reset,
+            partial=partial,
         )
 
         if is_reset and force_overwrite:

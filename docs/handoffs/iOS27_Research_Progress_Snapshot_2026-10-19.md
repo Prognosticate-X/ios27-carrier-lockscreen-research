@@ -178,7 +178,7 @@ Hopper 伪代码补充确认（`_queue_readStatusBarOverridesArchiveRecord` / `i
 
 ### A. 显示域部分覆写（优先）
 1. `控制实验：`-b 0/1/3` 确认 `displayValue` 生效面` → 已完成：锁屏不生效（实时），CC 生效（覆写）。
-2. **部分 entry 实验**：archive 中只写 `string` + `enabled=true` + `status=5`，省略 `displayValue`/`type`，观察锁屏与 CC 是 0 格、隐藏还是回退实时。
+2. `部分 entry 实验` → 已完成并产品化：CLI `--partial`、独立生成器 `--partial`、GUI「保留实时信号格（部分覆写）」复选框。
 3. **状态取值实验**：枚举 `enabled/status` 组合（true/5、true/0、false/0、省略），确认字符串显隐是否跟随实时蜂窝状态，寻找“飞行模式自动隐藏”的组合。
 4. **Sentinel 实验**：尝试 `displayValue = -1 / 255 / 0xFFFF` 等特殊值，观察是否被 UI 解释为“未覆写”。
 5. **归档器合并语义**：复核 `-[_SBSystemStatusStatusBarOverridesArchiveRecord recordByApplyingRecord:]` 与 `-[SBSystemStatusStatusBarOverridesArchiver _queue_setupObservingAndReconcileInitialState]`，确认磁盘记录与实时覆写记录的合并顺序，以及是否能保留实时字段。
@@ -216,3 +216,12 @@ python3 tools/device_ui.py screenshot .artifacts/screens/bars1_cc.png
 python3 tools/airlift_carrier_deploy.py --device 00008120-000934CA3E60C01E --reset
 xcrun devicectl device reboot --device 00008120-000934CA3E60C01E --style userspace
 ```
+
+---
+
+## 6. 交付状态（2026-10-19 收尾）
+
+- `--partial` 已实现于 `tools/airlift_carrier_deploy.py`、`airlift/airlift_carrier_deploy.py`、`tools/generate_statusbar_archive.py`；
+- GUI 新增中英双语「保留实时信号格（部分覆写）」复选框（请求字段 `partial`，后端透传到归档生成器）；
+- 单测 18 项全部通过（新增 partial archive 字段断言）；
+- README / README_ZH / 研究状态已更新推荐配置、GUI 用法与飞行模式限制说明。

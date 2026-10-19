@@ -119,3 +119,24 @@
 - 静态 `StatusBarOverrides.archive` 仍是唯一可工作的非越狱方案，其“信号钉死、飞行模式常驻”的限制保持不变。
 - 若未来获得以下任一原语，本路线可重新评估：① 对 `/var/wireless` 的 root 写；② 能通过签名校验的 carrier bundle overlay；③ 运行期注入 `CommCenter`（越狱/tweak）。
 - 仍可选的纯研究（无写入能力）：通过 IPSW 提取 `carrier.plist` 与 `CommCenter` 主程序，确认 `InterCarrierRoamingDisplayNames` 的真实读取位置与门控条件；这不会改变上述“不可写”的结论。
+
+---
+
+## 六、推荐交付配置：部分 entry（2026-10-19 最终）
+
+经过实机验证与 SystemStatusUI 反汇编，非越狱条件下的最佳配置是**部分 entry**：
+
+`~bash
+python3 tools/airlift_carrier_deploy.py -c "自定义名称" --partial
+`~
+
+或使用 GUI，勾选「保留实时信号格（部分覆写）」。
+
+效果：
+
+- 自定义运营商名称；
+- 锁屏与 Control Center 的**信号格回退实时**（省略 `displayValue`）；
+- Control Center **不显示制式文字**（省略 `type`）；
+- 飞行模式下名称仍常驻（名称渲染要求 `enabled=true` 且 `status=5`，静态归档没有跟随实时状态的哨兵）。
+
+因此：真实信号格已用纯静态归档解决；飞行模式联动只能依赖运行期发布 `STStatusBarOverridesStatusDomain`（需要 `com.apple.systemstatus.publisher` entitlement，属于越狱/TrollStore 级能力）。
