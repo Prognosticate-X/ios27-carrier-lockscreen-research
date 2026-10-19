@@ -1378,7 +1378,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
 
     def send_json(self, payload: dict, status: int = 200):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -1395,25 +1395,20 @@ class DashboardHandler(BaseHTTPRequestHandler):
             SERVER_RUNNING = False
             threading.Thread(target=lambda: os._exit(0)).start()
         elif parsed.path == "/api/deploy":
-            length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length))
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            thread = threading.Thread(target=execute_deploy_worker, args=(body,), daemon=True)
-            thread.start()
-            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
-        elif parsed.path == "/api/repair":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            usb_dev, _wired = find_target_device()
-            if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}, ensure_ascii=False).encode("utf-8"))
-                return
             try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length))
+                thread = threading.Thread(target=execute_deploy_worker, args=(body,), daemon=True)
+                thread.start()
+                self.send_json({"ok": True})
+            except Exception as error:
+                self.send_json({"ok": False, "error": str(error)}, status=400)
+        elif parsed.path == "/api/repair":
+            try:
+                usb_dev, _wired = find_target_device()
+                if not usb_dev:
+                    self.send_json({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"})
+                    return
                 report = clean_device(usb_dev["udid"])
                 staging = report["staging"].get("operation", {})
                 payload = {
@@ -1422,35 +1417,28 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "remaining": staging.get("remaining", []),
                     "booksReset": report["booksCleaned"]["droppedFiles"],
                 }
+                self.send_json(payload)
             except Exception as error:
-                payload = {"ok": False, "error": str(error)}
-            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+                self.send_json({"ok": False, "error": str(error)})
         elif parsed.path == "/api/respring":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            usb_dev, _wired = find_target_device()
-            if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}, ensure_ascii=False).encode("utf-8"))
-                return
             try:
+                usb_dev, _wired = find_target_device()
+                if not usb_dev:
+                    self.send_json({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"})
+                    return
                 activated = respring_device(usb_dev["udid"])
-                payload = {"ok": True, "pid": activated["pid"], "previousPid": activated["previousPid"], "seconds": activated["seconds"]}
+                self.send_json({"ok": True, "pid": activated["pid"], "previousPid": activated["previousPid"], "seconds": activated["seconds"]})
             except Exception as error:
-                payload = {"ok": False, "error": str(error)}
-            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+                self.send_json({"ok": False, "error": str(error)})
         elif parsed.path == "/api/reboot":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            usb_dev, _wired = find_target_device()
-            if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}).encode("utf-8"))
-                return
-            res = trigger_platform_reboot(usb_dev["udid"])
-            self.wfile.write(json.dumps(res).encode("utf-8"))
+            try:
+                usb_dev, _wired = find_target_device()
+                if not usb_dev:
+                    self.send_json({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"})
+                    return
+                self.send_json(trigger_platform_reboot(usb_dev["udid"]))
+            except Exception as error:
+                self.send_json({"ok": False, "error": str(error)})
         else:
             self.send_json(
                 {"ok": False, "error": "unknown endpoint", "path": parsed.path,

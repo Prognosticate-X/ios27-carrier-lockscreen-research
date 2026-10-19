@@ -186,6 +186,28 @@ class TestPipelineDiagnostics(unittest.TestCase):
         self.assertIsNone(parse_springboard_pid("PID   Executable Path\n"))
         self.assertIsNone(parse_springboard_pid("12    /usr/libexec/otherd\n"))
 
+    def test_repair_endpoint_survives_device_lookup_error(self):
+        """Regression: /api/repair must answer JSON even if find_target_device raises."""
+        import json
+        import threading
+        from http.server import HTTPServer
+        from unittest.mock import patch
+
+        from gui_server import DashboardHandler
+
+        server = HTTPServer(("127.0.0.1", 0), DashboardHandler)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            with patch("gui_server.find_target_device", side_effect=RuntimeError("device lookup failed")):
+                status, body = _http_request(port, "POST", "/api/repair", raw=True)
+            self.assertEqual(status, 200)
+            payload = json.loads(body)
+            self.assertFalse(payload.get("ok"))
+            self.assertIn("device lookup failed", payload.get("error", ""))
+        finally:
+            server.shutdown()
+
     def test_dashboard_endpoints_return_json(self):
         """Regression: unknown endpoints must answer with JSON, never an empty body."""
         import http.client
