@@ -225,3 +225,9 @@ xcrun devicectl device reboot --device 00008120-000934CA3E60C01E --style userspa
 - GUI 新增中英双语「保留实时信号格（部分覆写）」复选框（请求字段 `partial`，后端透传到归档生成器）；
 - 单测 18 项全部通过（新增 partial archive 字段断言）；
 - README / README_ZH / 研究状态已更新推荐配置、GUI 用法与飞行模式限制说明。
+
+### 3.0.4 控制中心“5G + Wi-Fi 并排”是原生行为（16:43 验证）
+
+- 从设备取出当时磁盘上的归档：内容为 **S2**（`status=2` 的部分 entry），但它并未生效（生效时名称应为 S2）。
+- 移除该归档并重启 SpringBoard 后，锁屏显示 `中国联通` + Wi-Fi，**无 5G/LTE**；控制中心状态栏仍显示 `中国联通 5G` + Wi-Fi，且制式在两次截图间由 4G 变为 5G（实时值）。
+- 结论：iOS 27 的控制中心状态栏原生就同时渲染“运营商 + 实时制式 + Wi-Fi”；锁屏/主屏状态栏只显示运营商 + Wi-Fi。全量 entry 会把 `type` 钉死，`--partial` 省略 `type` 后制式文字被抑制（不是回退实时）。

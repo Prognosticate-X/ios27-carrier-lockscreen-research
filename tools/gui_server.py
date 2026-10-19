@@ -470,7 +470,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
         <input type="checkbox" id="partialMode" style="width: 16px; height: 16px;">
         <span id="t_partialLabel">保留实时信号格（部分覆写）</span>
       </label>
-      <span class="optional-tag" id="t_partialHint">不写 displayValue/type；信号格与制式回退实时，名称仍可能飞行模式常驻</span>
+      <span class="optional-tag" id="t_partialHint">不写 displayValue/type；信号格回退实时、制式文字被抑制；名称仍可能飞行模式常驻</span>
     </div>
 
     <div class="card-title" style="margin-top: 4px;" id="t_cardTitleSecondary">副卡设置 (Secondary SIM / 双卡可选)</div>
@@ -699,7 +699,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryTypeLabel: "Network Type",
       primaryBarsLabel: "Signal Bars",
       partialLabel: "Live signal bars (partial override)",
-      partialHint: "Omit displayValue/type: bars and network type fall back to live data; the name may still persist in Airplane Mode",
+      partialHint: "Omit displayValue/type: bars fall back to live data and the network-type label is suppressed; the name may still persist in Airplane Mode",
       cardTitleSecondary: "Secondary SIM (Dual SIM Optional)",
       secCarrierLabel: "Secondary Carrier Name",
       secCarrierPh: "e.g., Verizon 5G (Leave empty for Single SIM)",
