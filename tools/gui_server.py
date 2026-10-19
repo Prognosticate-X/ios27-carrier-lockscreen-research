@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -57,8 +57,9 @@ DEPLOY_PROGRESS = {
 }
 
 LAST_HEARTBEAT = time.time()
-HEARTBEAT_TIMEOUT = 5.0
+HEARTBEAT_TIMEOUT = 30.0
 SERVER_RUNNING = True
+DEVICE_OPERATION_ACTIVE = 0
 
 def set_progress(
     percent: int,
@@ -1386,7 +1387,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        global SERVER_RUNNING
+        global SERVER_RUNNING, DEVICE_OPERATION_ACTIVE
         parsed = urlparse(self.path)
         if parsed.path == "/api/shutdown":
             self.send_response(200)
@@ -1404,6 +1405,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception as error:
                 self.send_json({"ok": False, "error": str(error)}, status=400)
         elif parsed.path == "/api/repair":
+            DEVICE_OPERATION_ACTIVE += 1
             try:
                 usb_dev, _wired = find_target_device()
                 if not usb_dev:
@@ -1420,7 +1422,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(payload)
             except Exception as error:
                 self.send_json({"ok": False, "error": str(error)})
+            finally:
+                DEVICE_OPERATION_ACTIVE -= 1
         elif parsed.path == "/api/respring":
+            DEVICE_OPERATION_ACTIVE += 1
             try:
                 usb_dev, _wired = find_target_device()
                 if not usb_dev:
@@ -1430,7 +1435,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json({"ok": True, "pid": activated["pid"], "previousPid": activated["previousPid"], "seconds": activated["seconds"]})
             except Exception as error:
                 self.send_json({"ok": False, "error": str(error)})
+            finally:
+                DEVICE_OPERATION_ACTIVE -= 1
         elif parsed.path == "/api/reboot":
+            DEVICE_OPERATION_ACTIVE += 1
             try:
                 usb_dev, _wired = find_target_device()
                 if not usb_dev:
@@ -1439,6 +1447,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 self.send_json(trigger_platform_reboot(usb_dev["udid"]))
             except Exception as error:
                 self.send_json({"ok": False, "error": str(error)})
+            finally:
+                DEVICE_OPERATION_ACTIVE -= 1
         else:
             self.send_json(
                 {"ok": False, "error": "unknown endpoint", "path": parsed.path,
@@ -1452,14 +1462,14 @@ def heartbeat_watcher():
     time.sleep(10)
     while SERVER_RUNNING:
         time.sleep(2)
-        if time.time() - LAST_HEARTBEAT > HEARTBEAT_TIMEOUT:
+        if DEVICE_OPERATION_ACTIVE == 0 and time.time() - LAST_HEARTBEAT > HEARTBEAT_TIMEOUT:
             print("\n[✓] 检测到控制台网页已关闭，命令行自动安全退出。")
             SERVER_RUNNING = False
             os._exit(0)
 
 
 def run_gui_server(port: int = 8765):
-    server = HTTPServer(("127.0.0.1", port), DashboardHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
     url = f"http://127.0.0.1:{port}"
     print(f"\n=======================================================")
     print(f" 🚀 iOS 27 锁屏运营商控制台 (中英双语版) 已就绪!")
