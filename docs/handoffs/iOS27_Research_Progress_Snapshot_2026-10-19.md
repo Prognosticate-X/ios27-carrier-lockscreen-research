@@ -75,6 +75,36 @@ CC 顶部 `中国联通 5G` 与 Wi-Fi 同时出现的原因**不是归档覆写*
 
 另外，**状态栏（锁屏）**在 Wi-Fi 连接时不显示制式文字；**Control Center** 在蜂窝数据开启时会显示。此前把该现象归因于覆写残留是不准确的。
 
+## 3.0 部分 entry 突破：自定义名称 + 实时信号（15:50–15:53）
+
+在解决“写回竞争”后，成功实测了**部分 entry**（只写部分字段）的语义：
+
+| 变体 | entry 字段 | 锁屏 | Control Center |
+|---|---|---|---|
+| **V4** | `string` + `enabled=true` + `status=5`，**省略 `displayValue`/`type`** | **V4 + 实时 4 点** | **V4 + 实时 4 格，无制式文字** |
+| V5 | 只有 `string`/`crossfadeString` | 名称消失 | 名称消失 |
+| V6 | `string` + `enabled=true`，省略 `status` | 名称消失 | 名称消失 |
+| V7 | `string` + `enabled=true` + `status=-1`（哨兵） | 名称消失 | — |
+
+关键发现：
+
+1. **`displayValue` 缺失时回退实时**：SpringBoard 把缺失字段解码为 0 并写回完整记录（1078B，`displayValue=0, type=0`），但 UI 显示的仍是**实时 4 格**。也就是说 `displayValue=0` 被当成“无覆写/实时”，而不是 0 格。
+2. **`type` 缺失时制式文字被抑制**：CC 不再显示 `5G/LTE`，也不会回退成实时制式（与 bars 不同）。
+3. **名称渲染必须 `enabled=true` 且 `status=5`**：缺 `enabled`（V5）或 `status`（V6）都会让名称完全消失；`status=-1` 也不行（无哨兵）。
+4. 因此现阶段可达到的最优组合是：**自定义名称 + 真实信号格（锁屏与 CC 均实时）+ CC 无制式文字**；但 `status=5` 是静态的，所以**飞行模式下名称仍常驻**。
+
+### 3.0.1 新增的实机原语（重要）
+
+1. **归档移出（读+删）**：AirTraffic `FileComplete` 的 source 可以是媒体目录之外的相对路径——`../../../Library/SpringBoard/StatusBarOverrides.archive` 会被 ATAirlock 解析为真实归档路径，并移动到 Media。移动后即可通过 AFC **读取归档内容和删除它**（目标变为 `status=8`）。
+2. **单会话原子替换**：在同一次 `airtraffic_host` 调用里依次派发 ①旧归档移出 ②软链移入 ③新 payload 移入，把“目标消失→新文件写入”的窗口压到约 1 秒。工具：`tools/airlift_archive_replace.py`。
+3. **击穿实时域缓存**：只替换磁盘归档不够——`systemstatusd` 的实时覆写域会通过 `diskRecord recordByApplyingRecord:liveRecord`（live 优先）把旧记录盖回来。必须先 `SIGSTOP` SpringBoard、`SIGKILL` `systemstatusd`，完成替换后再 `SIGKILL` SpringBoard，才能让新的部分 entry 生效。
+4. **`recordByApplyingRecord:` 反汇编确认**（模拟器 SpringBoard，`0x5b5b50`）：实现就是 `[statusBarData dataByApplyingOverlay:other.statusBarData]`，即 **entry 级原子合并**；`isEmpty`（`0x5b5b08`）= `statusBarData.isEmpty` 且 suppressed 集合为空。
+
+### 3.0.2 仍未解决
+
+- 飞行模式联动：`status=5` 必须静态写入才能渲染名称，静态归档没有“跟随实时状态”的入口。
+- 需要进一步确认 `status` 的取值语义（1–4）以及 SystemStatusUI 对 `string` 显隐的判定，看是否存在能跟随实时蜂窝状态的组合；若不存在，则飞行模式联动只能依赖运行期动态发布（tweak/注入），超出当前非越狱能力。
+
 ## 3.1 为什么锁屏能保持实时信号（新假设）
 
 锁屏渲染面在视图层把“信号强度”和“运营商字符串”拆开了：信号取实时 `STTelephonyStatusDomain`，字符串取 `STStatusBarOverridesStatusDomain`。这与 UIKitCore 层“整 entry 原子替换”的结论并不矛盾——原子替换发生在 **overrides 域内部**，而锁屏的蜂窝信号视图可能绑定的是实时域。
