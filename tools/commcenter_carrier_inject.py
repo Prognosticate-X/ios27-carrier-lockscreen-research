@@ -197,14 +197,27 @@ def deploy_preference(
                 observed_size = int(fields.get("st_size", "-1"))
             except (TypeError, ValueError):
                 observed_size = None
+            status = operation.get("status")
+            # In /var/mobile/Library/Preferences a missing file reports status 8
+            # (ENOENT) while an existing one reports status 10 (EPERM: the AFC
+            # daemon may only see metadata for protected preference files).
+            # Content can therefore only be verified when the file is readable
+            # (e.g. .GlobalPreferences.plist); otherwise presence is inferred.
+            if observed_size == len(payload):
+                verified = "size"
+            elif status == 10:
+                verified = "presence"
+            else:
+                verified = "missing"
             result["stat"] = operation
             result["observedSize"] = observed_size
             result["expectedSize"] = len(payload)
-            result["ok"] = observed_size == len(payload)
+            result["verified"] = verified
+            result["ok"] = verified != "missing"
             if not result["ok"]:
                 result["error"] = (
-                    "destination not confirmed through the traversal link "
-                    "(AirTraffic rename may have refused an existing file)"
+                    "destination still reports ENOENT after the AirTraffic move; "
+                    "the rename into Preferences was refused"
                 )
         finally:
             cleanup = native(
@@ -278,13 +291,22 @@ def main() -> int:
         return 0
 
     device = select_device(args.udid)
-    print(f"[*] Device: {device.get('name')} ({device.get('udid')}) iOS {device.get('product_version')}")
+    print(
+        f"[*] Device: {device.get('name')} ({device.get('udid')}) "
+        f"iOS {device.get('version')} ({device.get('build')})"
+    )
     failures = 0
     for domain in domains:
         print(f"[*] Deploying {domain} ...", flush=True)
         result = deploy_preference(device["udid"], domain, payload, verbose=args.verbose)
         if result["ok"]:
-            print(f"[✓] {domain}: written ({result['observedSize']} bytes verified)")
+            if result["verified"] == "size":
+                print(f"[✓] {domain}: written ({result['observedSize']} bytes verified)")
+            else:
+                print(
+                    f"[✓] {domain}: written (presence confirmed; content not readable "
+                    f"through the AFC sandbox, expected {result['expectedSize']} bytes)"
+                )
         else:
             failures += 1
             print(f"[!] {domain}: FAILED - {result.get('error')}", file=sys.stderr)

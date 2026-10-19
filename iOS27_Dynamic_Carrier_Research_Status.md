@@ -90,9 +90,15 @@
 - 因此“注入后 cfprefsd 是否会把这个新域提供给 CommCenter”以及“CommCenter 的 `CarrierSettingsInterface` 究竟读 `mobile` 用户域还是 `_wireless` 用户域”成为两个必须由实机结果回答的问题。
 - 新增工具 `tools/commcenter_carrier_inject.py` 已按“新建域”模型实现：只写 `InterCarrierRoamingDisplayNames`（可选 `CarrierName`），payload 上限 512 KiB，仅允许 Preferences 目录与 8 个 `com.apple.operator_*`/`carrier_*` 域名。
 
-### 3. 待执行（设备解锁后）
+### 3. 首轮注入结果（2026-10-19 14:41–14:45）
 
-1. 过滤备份（pymobiledevice3 `backup2`）确认 HomeDomain 中真实的运营商配置落盘结构；
-2. 部署 reset 空归档 + userspace 重启，确认锁屏恢复 `中国联通` 与真实信号；
-3. 执行 `tools/commcenter_carrier_inject.py -c "联通 Dynamic" --plmn china_unicom` + userspace 重启；
-4. 依据锁屏是否变为 `联通 Dynamic` 给出阳性/阴性结论，并据此决定是否转向路线 B（DSC/IPSW 离线反编译 `CommCenter` 主程序）。
+- 已向 4 个 `com.apple.operator_{1,2}{,.merged}.plist` 写入 `InterCarrierRoamingDisplayNames`（46001/46006/46009/46010 → `DYNTEST`），并补写 `com.apple.carrier_1.plist`；目标域从 `status=8`（不存在）变为 `status=10`（存在但元数据被拒），与已知偏好文件（`Accessibility`/`mobiletimer`/`Preferences` 均为 10）一致。
+- userspace 重启后锁屏仍为 `中国联通`，`DYNTEST` 未出现。
+- **该阴性结果不能否定假设**：偏好文件默认是 class C（`CompleteUntilFirstUserAuthentication`），本次启动后尚未首次解锁，cfprefsd/CommCenter 在启动时不可读这些新域；而 class A 的 `.GlobalPreferences.plist` 锁屏下仍可 stat 到 20845 bytes。
+- 另一个待排除项：若 ATAirlock 以 root 属主创建文件（0600），mobile 的 cfprefsd 将永远读不到；解锁后对目标域做 stat 可区分（class C + mobile → 可读；root → 仍 EPERM）。
+
+### 4. 待执行（设备解锁后，修订版）
+
+1. 解锁后先 `stat` 目标域：可读（`st_size=126`）说明 class C + mobile 属主，机制测试有效；仍 EPERM 则需怀疑 root 属主并改用备份恢复写入；
+2. 解锁状态下重新注入（可加 `--include-carrier-name` 变体），**不重启**，先用飞行模式切换/进程重启强制 CommCenter 重载，再截图控制中心；
+3. 若仍无效，再用过滤备份读取真实偏好内容，并转向路线 B（DSC/IPSW 离线反编译 `CommCenter` 主程序，确认 `CarrierSettingsInterface` 的真实域名与 bundle 来源）。

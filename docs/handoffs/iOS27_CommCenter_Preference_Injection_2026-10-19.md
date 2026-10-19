@@ -68,6 +68,26 @@
 
 ---
 
+## 2.6 首轮注入实测（14:41–14:45）
+
+设备解锁后执行了首轮完整注入：
+
+```bash
+python3 tools/commcenter_carrier_inject.py --udid 00008120-000934CA3E60C01E \
+  -c DYNTEST --plmn china_unicom --plmn 46006 --plmn 46009 --plmn 46010
+# → 4 个 operator 域（slot1/2 的普通 + .merged）全部落盘
+xcrun devicectl device reboot --device 00008120-000934CA3E60C01E --style userspace
+```
+
+结果与观察：
+
+1. **文件确实创建**：注入前 4 个目标域均为 `status=8`（ENOENT），注入后变为 `status=10`（EPERM，存在但元数据被拒）；随后补写的 `com.apple.carrier_1.plist` 同样如此。作为对照，Preferences 目录中已知存在的 `com.apple.Accessibility.plist`、`com.apple.mobiletimer.plist`、`com.apple.Preferences.plist` 也全部返回 `status=10`，不存在的文件才返回 8。
+2. **首轮判定为阴性**：userspace 重启后锁屏仍显示 `中国联通`（`DYNTEST` 未出现）。
+3. **最可能的原因——数据保护时序**：重启后设备一直停留在锁屏、**尚未发生过首次解锁**。iOS 偏好文件默认属于 `NSFileProtectionCompleteUntilFirstUserAuthentication`（class C），在“本次启动后首次解锁”之前不可读；而 `.GlobalPreferences.plist` 属于始终可读的 class A（锁屏下仍能 stat 到 20845 bytes）。CommCenter/cfprefsd 在启动时读不到新建域，因此该阴性结果**不能**用来否定 `InterCarrierRoamingDisplayNames` 假设。
+4. **另一个需要排除的可能**：若 ATAirlock 以 root 身份创建文件（0600），则 mobile 用户的 cfprefsd 永远读不到。解锁后对目标域做一次 `stat` 即可区分：class C + mobile 属主 → 解锁后可读到 `st_size=126`；root 属主 → 解锁后仍为 EPERM。
+
+因此下一轮实验必须满足：**设备已解锁 → 写入 → 解锁状态下触发 CommCenter 重载 → 立即观察**，而不是“写入后重启再锁屏观察”。
+
 ## 3. 待执行的关键实验（设备解锁后即可执行）
 
 前置：设备已解锁、点过“信任此电脑”。
@@ -160,3 +180,30 @@ PY
 - 偏好注入工具只允许 `/var/mobile/Library/Preferences` 与固定的 8 个 `com.apple.operator_*/carrier_*` 域名，payload 上限 512 KiB。
 - 写入走已审计的 AirLift Books/AirTraffic 通道，staging 结束后恢复 `Books.plist` 原始快照，不残留 `airlift-*` 目录。
 - 所有设备侧实验均在测试机 iPhone 14 Pro 上进行；日常主力机 iPhone 16 Pro Max 未参与。
+
+---
+
+## 6. 下一轮实验协议（修订版，必须保持解锁）
+
+```bash
+# 0) 设备解锁并保持解锁；先确认目标域可读（class 假设）
+python3 tools/device_path_probe.py --udid 00008120-000934CA3E60C01E \
+  --stat /var/mobile/Library/Preferences/com.apple.operator_1.merged.plist
+#    可读 → 返回 st_size（126）；仍 EPERM → 需怀疑 root 属主
+
+# 1) 重新注入（含 CarrierName 变体，作为第二个假设）
+python3 tools/commcenter_carrier_inject.py --udid 00008120-000934CA3E60C01E \
+  -c DYNTEST --plmn china_unicom --include-carrier-name
+
+# 2) 不重启，先尝试强制 CommCenter 重新读取：
+#    a. 用 HID 切换飞行模式（开→关），迫使重新注册与运营商名解析
+python3 tools/device_ui.py open-cc
+python3 tools/device_ui.py screenshot .artifacts/screens/cc_before_toggle.png
+#    b. 若无效，再用 CoreDevice/DVT 向 CommCenter 发送信号（需确认权限）
+.venv/bin/pymobiledevice3 developer core-device list-processes --userspace | grep CommCenter
+
+# 3) 每次操作后立即截图控制中心（运营商名 + 真实信号格）
+python3 tools/device_ui.py screenshot .artifacts/screens/cc_after.png
+```
+
+判定顺序：解锁可读性 → 飞行模式重载 → 进程重启 → 最后才考虑“域/键不成立”。
