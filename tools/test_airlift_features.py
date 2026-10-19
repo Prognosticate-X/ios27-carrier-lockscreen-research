@@ -56,6 +56,13 @@ class TestAirliftFeatures(unittest.TestCase):
         payload_reset = build_cellular_archive(is_reset=True)
         self.assertTrue(len(payload_reset) < len(payload_single))
 
+    def test_gui_exposes_network_types(self):
+        """Regression: the GUI deploy/reset worker uses NETWORK_TYPES."""
+        import gui_server
+
+        self.assertEqual(gui_server.NETWORK_TYPES["5g"], 10)
+        self.assertEqual(gui_server.NETWORK_TYPES["lte"], 9)
+
     def test_partial_archive_keeps_live_fields(self):
         """Partial mode must drop displayValue/type while keeping name + registration."""
         import plistlib

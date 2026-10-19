@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 
 from footnote_generator import save_footnote_profile
 from airlift_carrier_deploy import (
+    NETWORK_TYPES,
     query_connected_devices,
     build_cellular_archive,
     clean_device,
