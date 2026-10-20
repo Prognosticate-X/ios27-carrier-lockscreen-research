@@ -56,6 +56,35 @@ class TestAirliftFeatures(unittest.TestCase):
         payload_reset = build_cellular_archive(is_reset=True)
         self.assertTrue(len(payload_reset) < len(payload_single))
 
+    def test_gui_exposes_network_types(self):
+        """Regression: the GUI deploy/reset worker uses NETWORK_TYPES."""
+        import gui_server
+
+        self.assertEqual(gui_server.NETWORK_TYPES["5g"], 10)
+        self.assertEqual(gui_server.NETWORK_TYPES["lte"], 9)
+
+    def test_partial_archive_keeps_live_fields(self):
+        """Partial mode must drop displayValue/type while keeping name + registration."""
+        import plistlib
+
+        from airlift_carrier_deploy import build_cellular_archive
+
+        payload = build_cellular_archive(primary_carrier="Partial", partial=True)
+        plist = plistlib.loads(payload)
+        objects = plist["$objects"]
+
+        def resolve(value):
+            return objects[value.data] if isinstance(value, plistlib.UID) else value
+
+        record = resolve(plist["$top"]["root"])
+        data = resolve(record["statusBarData"])
+        entry = resolve(data["cellularEntry"])
+        self.assertNotIn("displayValue", entry)
+        self.assertNotIn("type", entry)
+        self.assertEqual(resolve(entry["string"]), "Partial")
+        self.assertTrue(entry["enabled"])
+        self.assertEqual(entry["status"], 5)
+
     def test_footnote_generator(self):
         data = generate_footnote_profile("Test Footnote Text")
         self.assertIn(b"com.apple.shareddeviceconfiguration", data)
@@ -157,6 +186,28 @@ class TestPipelineDiagnostics(unittest.TestCase):
         self.assertIsNone(parse_springboard_pid("PID   Executable Path\n"))
         self.assertIsNone(parse_springboard_pid("12    /usr/libexec/otherd\n"))
 
+    def test_repair_endpoint_survives_device_lookup_error(self):
+        """Regression: /api/repair must answer JSON even if find_target_device raises."""
+        import json
+        import threading
+        from http.server import HTTPServer
+        from unittest.mock import patch
+
+        from gui_server import DashboardHandler
+
+        server = HTTPServer(("127.0.0.1", 0), DashboardHandler)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            with patch("gui_server.find_target_device", side_effect=RuntimeError("device lookup failed")):
+                status, body = _http_request(port, "POST", "/api/repair", raw=True)
+            self.assertEqual(status, 200)
+            payload = json.loads(body)
+            self.assertFalse(payload.get("ok"))
+            self.assertIn("device lookup failed", payload.get("error", ""))
+        finally:
+            server.shutdown()
+
     def test_dashboard_endpoints_return_json(self):
         """Regression: unknown endpoints must answer with JSON, never an empty body."""
         import http.client
@@ -186,6 +237,99 @@ class TestPipelineDiagnostics(unittest.TestCase):
                 )
         finally:
             server.shutdown()
+
+class TestCommCenterPreferenceInjection(unittest.TestCase):
+    """Offline coverage for the upstream CommCenter preference injector."""
+
+    def test_operator_plist_payload(self):
+        import plistlib
+
+        from commcenter_carrier_inject import build_operator_plist
+
+        payload = build_operator_plist(
+            "UnicomDyn", ["46001", "46006"], include_carrier_name=True
+        )
+        self.assertTrue(payload.startswith(b"bplist00"))
+        decoded = plistlib.loads(payload)
+        self.assertEqual(
+            decoded["InterCarrierRoamingDisplayNames"],
+            {"46001": "UnicomDyn", "46006": "UnicomDyn"},
+        )
+        self.assertEqual(decoded["CarrierName"], "UnicomDyn")
+
+    def test_operator_plist_requires_plmn(self):
+        from airlift_carrier_deploy import AirLiftCarrierError
+        from commcenter_carrier_inject import build_operator_plist
+
+        with self.assertRaises(AirLiftCarrierError):
+            build_operator_plist("X", [])
+
+    def test_staging_zip_is_restricted_to_preferences(self):
+        import io
+        import zipfile
+
+        from airlift_carrier_deploy import AirLiftCarrierError
+        from commcenter_carrier_inject import PREFERENCE_DIR, build_staging_zip
+
+        with self.assertRaises(AirLiftCarrierError):
+            build_staging_zip("/var/mobile/Library/SpringBoard", b"payload")
+        with self.assertRaises(AirLiftCarrierError):
+            build_staging_zip("var/mobile/Library/Preferences", b"payload")
+        with self.assertRaises(AirLiftCarrierError):
+            build_staging_zip(PREFERENCE_DIR, b"")
+
+        archive = zipfile.ZipFile(io.BytesIO(build_staging_zip(PREFERENCE_DIR, b"abc")))
+        self.assertEqual(
+            archive.read("p0/p1/p2/link"),
+            b"../../../var/mobile/Library/Preferences",
+        )
+        self.assertEqual(archive.read("payload"), b"abc")
+
+    def test_deploy_preference_rejects_unknown_domain(self):
+        from airlift_carrier_deploy import AirLiftCarrierError
+        from commcenter_carrier_inject import deploy_preference
+
+        with self.assertRaises(AirLiftCarrierError):
+            deploy_preference("udid-unused", "com.apple.springboard.plist", b"x")
+
+
+class TestDevicePathProbe(unittest.TestCase):
+    """Offline coverage for the read-only device path probe."""
+
+    def test_allowlist(self):
+        from airlift_carrier_deploy import AirLiftCarrierError
+        from device_path_probe import validate_remote_path
+
+        self.assertEqual(
+            validate_remote_path("/var/mobile/Library/Preferences/com.apple.a.plist"),
+            "/var/mobile/Library/Preferences/com.apple.a.plist",
+        )
+        self.assertEqual(
+            validate_remote_path("/var/mobile/Library/Preferences/"),
+            "/var/mobile/Library/Preferences",
+        )
+        for rejected in (
+            "/var/mobile/Library/SpringBoardX/a",
+            "/var/preferences/../../etc/passwd",
+            "var/mobile/Library/Preferences/a.plist",
+        ):
+            with self.assertRaises(AirLiftCarrierError):
+                validate_remote_path(rejected)
+
+    def test_probe_zip_symlink_target(self):
+        import io
+        import zipfile
+
+        from device_path_probe import build_probe_zip
+
+        archive = zipfile.ZipFile(
+            io.BytesIO(build_probe_zip("/var/mobile/Library/Preferences", b"probe"))
+        )
+        self.assertEqual(
+            archive.read("p0/p1/p2/link"),
+            b"../../../var/mobile/Library/Preferences",
+        )
+
 
 
 def _http_request(port, method, path, raw=False):

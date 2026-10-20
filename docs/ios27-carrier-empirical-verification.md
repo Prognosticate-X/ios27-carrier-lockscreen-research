@@ -88,3 +88,20 @@
 python3 tools/generate_statusbar_archive.py "中国广电 5G" StatusBarOverrides.archive
 ```
 生成的 `.archive` 文件可直接供 AirLift 传输通道进行投递。
+
+---
+
+## 5. 覆写粒度的时间线（2026-10-19 重要补充）
+
+本文档前文把“状态栏覆写”作为一个整体讨论，但覆写粒度在 iOS 版本之间发生过一次关键变化，必须区分：
+
+| 版本 | 覆写载体 | 覆盖粒度 | 未覆盖字段的行为 |
+|---|---|---|---|
+| iOS ≤ 16 | `statusBarOverrides`（3944 字节 `StatusBarOverrideData` C 结构体） | **逐字段 override flags** | 继续使用实时基带数据（真实信号格、飞行模式联动） |
+| iOS 17+ / 27 | `StatusBarOverrides.archive`（`NSKeyedArchiver` → `STStatusBarData`） | **整个 `STStatusBarDataCellularEntry` 对象替换** | 缺省字段解码为 0/NO，无字段级回退 |
+
+因此：
+
+- “Nugget 方案是静态的”这一说法**只对 iOS 27 的现代 archive 成立**；旧版 Nugget 在未选择修改信号格时，确实可以保留真实信号与飞行模式行为（这与社区实测一致）。
+- 现代 archive 的静态化来自 `STStatusBarData` 的对象级语义，而不是“显示域覆写”这个方向本身。
+- 当前开放问题：iOS 27 是否仍存在部分覆写入口（archive 哨兵值、`recordByApplyingRecord:` 合并、或锁屏/CC 不同渲染面）。详见 `docs/handoffs/iOS27_Research_Progress_Snapshot_2026-10-19.md`。

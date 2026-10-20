@@ -16,8 +16,8 @@
 | 定制目标 | iOS 27.x 状态 | 核心实现机制 | 适用性与范围 |
 |---|---|---|---|
 | **锁屏底部脚注 (Footnote)** | 🟢 **完全可用** | `com.apple.shareddeviceconfiguration` 体系下的 `SharedDeviceConfiguration.plist` | **全机型通用 (100%)** — Apple 官方标准描述文件 (`.mobileconfig`) 通道或通过 `SysSharedContainerDomain` 保护性备份注入。完全零风险、免越狱（部分企业/受限设备可能要求监督模式）。 |
-| **运营商名称覆写 (静态)** | 🟢 **物理真机实测通过 (重大突破)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **物理真机端到端全量验证通过** — 已被主流定制套件 [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget)（v9.5.1 / v9.5.2）正式合并并全面发布。GoldenNugget 核心维护者 `@awesomenull` 及社区多位真实用户已通过 `HomeDomain` 备份恢复管道在真实设备上完成验证，官方文档已正式确立为 **“Verified end-to-end by me and other users”**。整项静态锁定（飞行模式下常驻/信号格数固定）。 |
-| **动态运营商与真实基带信号 (上游)** | 🔬 **逆向工程重大突破** | `CommCenter` / `libCommCenterBase` PLMN 字典映射机制 (`InterCarrierRoamingDisplayNames`) | **唯一可行上游主方向** — 汇编反编译彻底证伪了 `StatusBarData` 字段级透传（整对象原子指针替换）与 `SystemStatusDefaults` 覆写。突破发现 `NetworkListOperator::getLocalizedCompositeName` (`0x1b3db050c`) 的 PLMN 查表替换与 `/var/mobile/Library/Preferences/`（`com.apple.operator_1.merged.plist`）偏好映射层，**100% 保持真实基带信号与飞行模式联动**。详见 [`iOS27_Dynamic_Carrier_Research_Status.md`](iOS27_Dynamic_Carrier_Research_Status.md) 与 [`docs/commcenter-dynamic-carrier-reverse-engineering.md`](docs/commcenter-dynamic-carrier-reverse-engineering.md)。 |
+| **运营商名称覆写 (静态)** | 🟢 **物理真机实测通过 (重大突破)** | 现代 `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **物理真机端到端全量验证通过** — 已被主流定制套件 [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget)（v9.5.1 / v9.5.2）正式合并并全面发布。GoldenNugget 核心维护者 `@awesomenull` 及社区多位真实用户已通过 `HomeDomain` 备份恢复管道在真实设备上完成验证，官方文档已正式确立为 **“Verified end-to-end by me and other users”**。全量 entry 会把 CC 信号格钉死；`--partial` 省略 `displayValue`/`type` 后，锁屏与 CC 都回退实时信号格且不显示制式。飞行模式下文字仍常驻（名称要求 `status = 5`）。 |
+| **动态运营商与真实基带信号 (上游)** | 🔴 **实机证伪（iOS 27.0.1）** | 已签名 carrier bundle（`/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`）+ `/var/wireless/Library/Preferences/` 下的 CommCenter 状态 | **非越狱条件下没有可用写入路径** —— 反汇编排除了 `StatusBarData` 字段级覆写；iPhone 14 Pro（27.0.1）实机实验进一步证明：HomeDomain 中不存在任何运营商名数据，CommCenter 状态位于 `WirelessDomain`（属主 `_wireless`，mobile/AirLift 不可写），显示名来自已签名 bundle。向 12 个 HomeDomain 域注入 `InterCarrierRoamingDisplayNames`/`CarrierName` 并冷启动 cfprefsd/CommCenter/SpringBoard 后均无效。静态 `StatusBarOverrides.archive` 仍是唯一可用方案。证据见 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。 |
 
 ---
 
@@ -44,10 +44,17 @@
    - ✅ **离线单元测试**：GoldenNugget 编写离线测试套件 `tools/test_statusbar_archive.py` 验证数据结构生成与解析逻辑。
    - ✅ **物理真机实测通过**：在 Commit [`dbb000cb`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/dbb000cb248e91a0ad53378a5f5d227d1540d562) 与官方文档 [`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md) 中，GoldenNugget 开发者正式更新实测结论为：**`"Verified end-to-end by me and other users"`**。通过开发专属的 `tools/deploy_statusbar_archive.py` 与 `tools/fetch_statusbar_archive.py`，经对比生成的归档与真实 iOS 27.0.1 设备 dump 字节完全一致，宣告端到端实机验证全面打通！
 4. **AirLift 通道真机端到端实测（本仓库自身通道）**：在 **iPhone 16 Pro Max（iPhone17,2），iOS 27.0（24A437）** 上通过 USB 完成实测：
-   - ✅ **字节级投递**：把写入 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 的归档再通过 AirTraffic 回读资产取回，与载荷逐字节比对一致。
+   - ✅ **字节级投递（24A437）**：把写入 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 的归档再通过 AirTraffic 回读资产取回，与载荷逐字节比对一致。在 iOS 27.0.1（24A446）上，AFC 拒绝读取 `/var/mobile/Media` 之外的文件，因此该回读在新构建上不可用（见限制第 6 条）。
    - ✅ **真机渲染**：自定义运营商名（`CMHK`）在**控制中心**正常显示（灵动岛机型主屏顶栏不渲染运营商名）。
    - ✅ **持久化**：SpringBoard 首次接管后，覆写在整机重启后依然保持（见限制第 4 条）。
    - ✅ **故障处理**：人为注入 Books 前置镜像漂移后，流水线能识别、回滚并自动重试；每次 staging 失败都不留残留（`airlift-*` 目录与 Books 暂存行均已还原）。
+5. **CommCenter 上游通道（路线 A）——已在 iPhone 14 Pro / iOS 27.0.1（24A446）完成准备与部分实测**：`InterCarrierRoamingDisplayNames` PLMN 映射是当前唯一已知的“改运营商名但保留真实信号与飞行模式联动”路径，实机实验链路已全部打通：
+   - ✅ **目标网络已确认**：测试机为 **中国联通**（`中国联通`，PLMN `46001`/`46006`/`46009`/`46010`）。
+   - ✅ **验证面**：iPhone 14 Pro 锁屏左上角会渲染运营商名，因此**无需解锁即可截图验证**。
+   - ✅ **读取边界已实测**：AFC 能通过 AirLift 软链 `stat` HomeDomain 路径（`status=8` 不存在，`status=10` 存在但不可 stat），但**在该构建上无法读取 `/var/mobile/Media` 之外的文件内容**；同时所有 `com.apple.operator_*` / `com.apple.carrier_*` 偏好域在干净设备上均不存在（注入等于新建域，而非覆盖既有设置）。
+   - ✅ **写入通道已在 24A446 复验**：通过 AirLift 写入的探针名 `ZZTEST9` 成功显示在锁屏；且仅 respring 不会清除已被系统采纳的静态覆写，需要用户空间/整机重启。
+   - 📌 **关于「显示域」路线的重要更正**：本项目的研究方向一直是**显示域覆写**。iOS ≤16 的旧版 `statusBarOverrides` C 结构体（`StatusBarOverrideData`）使用**逐字段 override flags**，Nugget/Cowabunga 可以只覆盖运营商字符串，而让真实基带信号与飞行模式行为继续生效。iOS 27 换成了 `STStatusBarData` 的**整对象 entry 替换**，这才是「静态化」退化的来源，而不是显示域思路本身。iOS 27 是否还存在部分覆写入口（archive 哨兵值、`recordByApplyingRecord:`、或锁屏等不同渲染面），是当前待验证的开放问题；见 [进度快照](docs/handoffs/iOS27_Research_Progress_Snapshot_2026-10-19.md)。
+   - ❌ **路线 A 判定（24A446，本网）：阴性，且真实数据模型已完成取证**。已创建 12 个 HomeDomain 候选域（base / slot1 / slot2 × `operator` / `carrier` × 普通 / `.merged`），payload 含 `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`；解锁状态下通过 CoreDevice 信号通道冷启动 `cfprefsd`、`CommCenter`、`SpringBoard`，锁屏仍为 `中国联通`。随后完成的受信过滤备份显示真实布局：PLMN `46001`、`CarrierBundleName = 46001`，CommCenter 状态只存在于 **`WirelessDomain`**（`/var/wireless/Library/Preferences/com.apple.commcenter.plist` 等），整个 manifest 中没有任何 `operator_1`/`carrier_1` 域，显示名来自已签名系统 bundle `/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`。因此 HomeDomain 是错误的数据层，而 `/var/wireless` 与密封 bundle 在 mobile/AirLift 上下文中均不可写。12 个域已写回空字典。完整证据链见 [交接文档](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
 
 ---
 
@@ -88,7 +95,7 @@
 - **`systemstatusd` 内存缓存同步机制**：在 iOS 27 中，系统状态服务端 `systemstatusd` 在内存中常驻发布者数据。在线更新归档时，必须协同重启 `systemstatusd` 与 `SpringBoard`，防止旧内存缓存反向覆盖刚刚写入的新归档。
 
 ### 3. 动态运营商逆向工程与 CommCenter 上游机制重大突破
-虽然 `StatusBarOverrides.archive` 成功在 iOS 27 实机上渲染了自定义运营商名称，但其实质是静态 Mock：开启飞行模式后文字依然常驻、信号格数也永久固定为 4 格无法反映真实基带信号。我们针对 iOS 27 系统二进制（`UIKitCore`、`SystemStatus.framework`、`CoreTelephony.framework`、`libCommCenterBase.dylib` 以及 dyld 缓存全量 4,088 个镜像）展开了深度汇编级逆向：
+虽然 `StatusBarOverrides.archive` 成功在 iOS 27 实机上渲染了自定义运营商名称，但它在两点上仍是静态 Mock：开启飞行模式后文字依然常驻；Control Center 的蜂窝模块会渲染归档中写入的 `displayValue`。不过在 iPhone 14 Pro / iOS 27.0.1 实测中，**锁屏**的信号指示器仍然显示实时基带点数（写入 `-b 1` 时锁屏仍是 4 点）——锁屏与 CC 两个渲染面并非同样消费覆写（2026-10-19 实测，见 [进度快照](docs/handoffs/iOS27_Research_Progress_Snapshot_2026-10-19.md)）。我们针对 iOS 27 系统二进制（`UIKitCore`、`SystemStatus.framework`、`CoreTelephony.framework`、`libCommCenterBase.dylib` 以及 dyld 缓存全量 4,088 个镜像）展开了深度汇编级逆向：
 
 #### 静态与状态栏路径的反汇编证伪
 - **方向 3（`StatusBarOverrides` 字段级透传）—— 彻底证伪 (Dead End)**：
@@ -177,6 +184,9 @@ cd airlift && make && cd ..
 # 单卡定制：设置运营商名称
 python3 tools/airlift_carrier_deploy.py -c "中国移动 5G" -b 4 -t 5g
 
+# 推荐：部分覆写 —— 自定义名称 + 真实信号格，CC 不显示制式文字
+python3 tools/airlift_carrier_deploy.py -c "中国移动 5G" --partial
+
 # 双卡定制：设置主卡与副卡名称及角标
 python3 tools/airlift_carrier_deploy.py \
   -c "CMI" --badge "P" \
@@ -200,6 +210,7 @@ python3 tools/airlift_carrier_deploy.py -i
 
 # 启动可视化 GUI 控制台 (自动打开浏览器)
 python3 tools/gui_server.py
+# 在 GUI 中勾选「保留实时信号格（部分覆写）」即使用部分 entry。
 
 # 提示：使用前请断开 iPhone 的 Wi-Fi（设置 → 无线局域网）并使用 USB 数据线。
 # 若设备以本地网络方式接入，工具仍会继续执行，但会提示建议改用有线连接。
@@ -214,7 +225,28 @@ python3 tools/airlift_carrier_deploy.py --clean-device
 python3 tools/airlift_resilience_check.py --yes
 ```
 
-### 2. 独立归档生成器与模拟器部署 (`tools/generate_statusbar_archive.py`)
+### 2. CommCenter 上游偏好层实验（路线 A）
+```bash
+# 只读侦察：通过 AirLift 软链对 HomeDomain 做 stat / list / read
+python3 tools/device_path_probe.py --udid <UDID> \
+  --stat /var/mobile/Library/SpringBoard/StatusBarOverrides.archive
+
+# 离线生成 InterCarrierRoamingDisplayNames 映射（不接触设备）
+python3 tools/commcenter_carrier_inject.py -c "自定义 5G" --plmn china_unicom --dry-run
+
+# 注入到主/副卡 operator 偏好域（HomeDomain / Library/Preferences）
+python3 tools/commcenter_carrier_inject.py -c "自定义 5G" --plmn china_unicom
+
+# 视觉验证：截图与 CoreDevice HID 控制中心手势
+python3 tools/device_ui.py screenshot control-center.png
+python3 tools/device_ui.py open-cc
+
+# 不重启整机，冷启动 cfprefsd / CommCenter / SpringBoard（root 信号通道）
+.venv/bin/pymobiledevice3 developer core-device list-processes --userspace
+.venv/bin/pymobiledevice3 developer core-device send-signal-to-process <pid> 15 --userspace
+```
+
+### 3. 独立归档生成器与模拟器部署 (`tools/generate_statusbar_archive.py`)
 ```bash
 # 生成定制二进制归档文件
 python3 tools/generate_statusbar_archive.py -c " Apple 5G" -b 4 -t 5g -o custom.archive
@@ -241,6 +273,11 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 ├── tools/                                             # 跨设备通用自动化工具链
 │   ├── airlift_carrier_deploy.py                      # 通用型 AirLift 物理真机部署 CLI
 │   ├── airlift_resilience_check.py                    # 真机重试/回滚韧性自检 (会写设备, 需 --yes)
+│   ├── commcenter_carrier_inject.py                   # 路线 A：InterCarrierRoamingDisplayNames 偏好注入器
+│   ├── device_path_probe.py                           # 通过 AirLift 软链的只读 HomeDomain 侦察工具
+│   ├── device_ui.py                                   # CoreDevice HID 手势 / 截图验证助手
+│   ├── statusbar_variant_lab.py                       # 字段子集归档变体（研究用）
+│   ├── airlift_archive_replace.py                     # 单次 AirTraffic 会话内“移出旧归档 + 移入新归档”
 │   ├── gui_server.py                                  # 中英双语可视化控制台 (部署 / 修复 / 重启 SpringBoard)
 │   ├── display_metrics.py                             # 灵动岛宽度启发式与截断告警
 │   ├── footnote_generator.py                          # 锁屏脚注 .mobileconfig 生成器
@@ -268,7 +305,9 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
     ├── handoffs/                                      # 历次研究交接与阶段性论证归档
     │   ├── iOS27_Carrier_LockScreen_Research_Handoff_2026-09-25.md
     │   ├── iOS27_Carrier_Footnote_Research_Handoff_2026-09-28.md
-    │   └── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   ├── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   ├── iOS27_CommCenter_Preference_Injection_2026-10-19.md
+    │   └── iOS27_Research_Progress_Snapshot_2026-10-19.md
     ├── iOS27_Carrier_Footnote_Solution.md             # 终局完整技术方案与安全裁决报告
     ├── architecture.md                                # 系统全景架构与安全边界报告
     ├── carrier-data-flow.md                           # SIM -> CommCenter -> SystemStatusUI 全链路逆向
@@ -301,7 +340,7 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 2. **ATAirlock `rename` 覆盖限制 (AirLift 单独通道特有)**：AirTraffic 底层 `-[ATAirlock processCompletedAsset:]` 调用 Cocoa 的 `moveItemAtPath:toPath:error:`。当目标路径已存在同名文件时，系统会报 `NSFileWriteFileExistsError` 错误并拒绝写入。**实测补充**：在 iPhone 16 Pro Max / iOS 27.0 (24A437) 上，对已存在归档的覆写是**成功**的（回读内容与新载荷逐字节一致），说明该限制并非在所有机型/版本上都会触发，但仍属版本相关行为，因此 `--force-overwrite`（两阶段：复位归档 → 重启 → 重新写入）继续作为更新时的稳妥路径保留。*(注：通过 GoldenNugget 的 `HomeDomain` 备份恢复管道投递可彻底规避此限制)*。
 3. **锁屏脚注监督模式考量**：`com.apple.shareddeviceconfiguration` 属于 Apple 官方 MDM 规范；在特定受限企业策略或特定子版本中，系统可能要求设备处于 Supervised 监督模式才能展示锁屏脚注。
 4. **生效时机：首次注入后必须做一次 SpringBoard 重启**：SpringBoard 只在**自身启动过程**中读取 `StatusBarOverrides.archive`，所以在它运行期间由 AirLift 放进设备的归档不会被自动加载——**第一次**注入后必须执行一次 `--respring`（或 GUI 的"⚡ 立即重启 SpringBoard"按钮，或单独执行 `python3 tools/airlift_carrier_deploy.py --respring`），此时单纯整机重启是不够的。一旦 SpringBoard 读取并把覆写状态重新落盘，覆写就会**在后续整机重启后持续保持**（已在 iPhone 16 Pro Max / iOS 27.0 24A437 上实测验证）。另外灵动岛机型的状态栏不显示运营商名，请在**控制中心**查看。
-5. **覆写是静态的 (当前 StatusBarOverrides 方案) 与上游动态突破**：现有归档方案把整个蜂窝状态栏条目完全钉死（`enabled = true`、`status = 5`、`type = <网络类型>`、`displayValue = <格数>`、`string`/`crossfadeString`）。`UIKitCore` 汇编（`-[_UIStatusBarData dataByApplyingOverlay:]` @ `0x1c80148f4`）已彻底证实系统层做的是原子指针整体替换，无字段级回退透传，导致开启飞行模式后文字仍常驻且信号格数固定。为实现**真实信号格数与飞行模式动态联动**，最新研究已将逆向切入点前移至基带上游 `CommCenter`（`libCommCenterBase.dylib`），成功发现 `InterCarrierRoamingDisplayNames` 字典映射机制（`0x1b3db050c`）与 `/var/mobile/Library/Preferences/`（`com.apple.operator_1.merged.plist`）免验签偏好注入路径。完整汇编证据与后续真机实验计划详见 [`iOS27_Dynamic_Carrier_Research_Status.md`](iOS27_Dynamic_Carrier_Research_Status.md) 与 [`docs/commcenter-dynamic-carrier-reverse-engineering.md`](docs/commcenter-dynamic-carrier-reverse-engineering.md)。
+5. **覆写是静态的 (当前 StatusBarOverrides 方案) 与上游动态突破**：现有归档方案把整个蜂窝状态栏条目完全钉死（`enabled = true`、`status = 5`、`type = <网络类型>`、`displayValue = <格数>`、`string`/`crossfadeString`）。`UIKitCore` 汇编（`-[_UIStatusBarData dataByApplyingOverlay:]` @ `0x1c80148f4`）已彻底证实系统层做的是原子指针整体替换，无字段级回退透传，导致开启飞行模式后文字仍常驻、Control Center 信号格数固定。实机补充（iPhone 14 Pro / 27.0.1）：写入 `-b 1` 后锁屏仍显示 4 点实时信号，而 CC 显示覆写的 1 格；飞行模式名称常驻对两个渲染面都成立。**部分覆写模式（`--partial`）**会省略 `displayValue`/`type`：锁屏与 CC 都回退实时信号格，且不显示制式文字；但名称仍要求 `status = 5`，所以飞行模式下名称依旧常驻。真正的运行期联动需要以具备 `com.apple.systemstatus.publisher` entitlement 的进程发布 `STStatusBarOverridesStatusDomain`（SpringBoard 注入），属于越狱/TrollStore 级能力。另请注意：**原生** iPhone 的控制中心状态栏本来就会同时显示实时运营商/制式 + Wi-Fi，这不是覆写残留；锁屏/主屏状态栏才只显示运营商 + Wi-Fi。全量 entry 会把制式钉死，`--partial` 则会抑制制式文字。为实现**真实信号格数与飞行模式动态联动**，最新研究已将逆向切入点前移至基带上游 `CommCenter`（`libCommCenterBase.dylib`），成功发现 `InterCarrierRoamingDisplayNames` 字典映射机制（`0x1b3db050c`）与 `/var/mobile/Library/Preferences/`（`com.apple.operator_1.merged.plist`）免验签偏好注入路径。完整汇编证据与后续真机实验计划详见 [`iOS27_Dynamic_Carrier_Research_Status.md`](iOS27_Dynamic_Carrier_Research_Status.md) 与 [`docs/commcenter-dynamic-carrier-reverse-engineering.md`](docs/commcenter-dynamic-carrier-reverse-engineering.md)。
 6. **暂存阶段健壮性与验证诚实性**：`stage` 阶段现在最多重试 3 次，每次使用全新的 staging 随机名并重新采集 Books 前置镜像；任何一次失败都会自动回滚，因此设备端的瞬时 Books 写入不再会留下 `/var/mobile/Media/airlift-src-*` 残留目录或 `Books.plist` 脏行。由于 AFC 守护进程被限制在 Media 沙箱内，已落地的归档只能通过 staging 符号链接**探测**其存在（stat 非“文件不存在”即视为已写入）；字节级回读需要把归档从 SpringBoard 移出（破坏性），因此 CLI 会如实显示 `Byte Verification: unavailable` 而不会伪造结果。若发生硬性中断（例如进程被杀），执行 `--clean-device` 即可恢复干净的暂存状态。
 
 ---

@@ -22,7 +22,7 @@ import sys
 import threading
 import time
 import webbrowser
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -31,6 +31,7 @@ sys.path.insert(0, str(ROOT))
 
 from footnote_generator import save_footnote_profile
 from airlift_carrier_deploy import (
+    NETWORK_TYPES,
     query_connected_devices,
     build_cellular_archive,
     clean_device,
@@ -56,8 +57,9 @@ DEPLOY_PROGRESS = {
 }
 
 LAST_HEARTBEAT = time.time()
-HEARTBEAT_TIMEOUT = 5.0
+HEARTBEAT_TIMEOUT = 30.0
 SERVER_RUNNING = True
+DEVICE_OPERATION_ACTIVE = 0
 
 def set_progress(
     percent: int,
@@ -440,17 +442,35 @@ HTML_PAGE = f"""<!DOCTYPE html>
         <label><span id="t_primaryBadgeLabel">主卡角标</span><span class="optional-tag" id="t_opt2">(可选)</span></label>
         <input type="text" id="primaryBadge" placeholder="如: P, 1">
       </div>
+      <div style="width: 110px;">
+        <label><span id="t_primaryTypeLabel">网络制式</span><span class="optional-tag" id="t_optType1">(可选)</span></label>
+        <select id="primaryType">
+          <option value="5g">5G</option>
+          <option value="5g+">5G+</option>
+          <option value="5g-uwb">5G Ultra</option>
+          <option value="lte">LTE</option>
+          <option value="4g">4G</option>
+          <option value="3g">3G</option>
+        </select>
+      </div>
       <div style="width: 120px;">
         <label><span id="t_primaryBarsLabel">信号格数</span><span class="optional-tag" id="t_opt3">(可选)</span></label>
         <select id="primaryBars">
-          <option value="" id="t_barsDefault1">默认 (不变)</option>
-          <option value="4" id="t_bars4_1">4 格 (满格)</option>
+          <option value="4" id="t_barsDefault1">4 格 (默认静态)</option>
           <option value="3" id="t_bars3_1">3 格</option>
           <option value="2" id="t_bars2_1">2 格</option>
           <option value="1" id="t_bars1_1">1 格</option>
           <option value="0" id="t_bars0_1">0 格</option>
         </select>
       </div>
+    </div>
+
+    <div class="row" style="align-items: center; gap: 10px; margin-top: 2px;">
+      <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
+        <input type="checkbox" id="partialMode" style="width: 16px; height: 16px;">
+        <span id="t_partialLabel">保留实时信号格（部分覆写）</span>
+      </label>
+      <span class="optional-tag" id="t_partialHint">不写 displayValue/type；信号格回退实时、制式文字被抑制；名称仍可能飞行模式常驻</span>
     </div>
 
     <div class="card-title" style="margin-top: 4px;" id="t_cardTitleSecondary">副卡设置 (Secondary SIM / 双卡可选)</div>
@@ -463,14 +483,25 @@ HTML_PAGE = f"""<!DOCTYPE html>
         <label><span id="t_secBadgeLabel">副卡角标</span><span class="optional-tag" id="t_opt5">(可选)</span></label>
         <input type="text" id="secBadge" placeholder="如: S, 2">
       </div>
+      <div style="width: 110px;">
+        <label><span id="t_secTypeLabel">副卡制式</span><span class="optional-tag" id="t_optType2">(可选)</span></label>
+        <select id="secType">
+          <option value="5g">5G</option>
+          <option value="5g+">5G+</option>
+          <option value="5g-uwb">5G Ultra</option>
+          <option value="lte">LTE</option>
+          <option value="4g">4G</option>
+          <option value="3g">3G</option>
+        </select>
+      </div>
       <div style="width: 120px;">
         <label><span id="t_secBarsLabel">副卡信号</span><span class="optional-tag" id="t_opt6">(可选)</span></label>
         <select id="secBars">
-          <option value="" id="t_barsDefault2">默认 (不变)</option>
-          <option value="4" id="t_bars4_2">4 格</option>
+          <option value="4" id="t_barsDefault2">4 格 (默认静态)</option>
           <option value="3" id="t_bars3_2">3 格</option>
           <option value="2" id="t_bars2_2">2 格</option>
           <option value="1" id="t_bars1_2">1 格</option>
+          <option value="0" id="t_bars0_2">0 格</option>
         </select>
       </div>
     </div>
@@ -591,12 +622,16 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryCarrierPh: "例如：中国移动 5G (留空不覆盖名称)",
       primaryBadgeLabel: "主卡角标",
       primaryBadgePh: "如: P, 1",
+      primaryTypeLabel: "网络制式",
       primaryBarsLabel: "信号格数",
+      partialLabel: "保留实时信号格（部分覆写）",
+      partialHint: "不写 displayValue/type；信号格与制式回退实时，名称仍可能飞行模式常驻",
       cardTitleSecondary: "副卡设置 (Secondary SIM / 双卡可选)",
       secCarrierLabel: "副卡运营商名称",
       secCarrierPh: "例如：中国联通 5G (单卡用户请留空)",
       secBadgeLabel: "副卡角标",
       secBadgePh: "如: S, 2",
+      secTypeLabel: "副卡制式",
       secBarsLabel: "副卡信号",
       cardTitleFootnote: "锁屏底部脚注 (Footnote)",
       footnotePh: "Home 条正上方个性签名 (可选，例如:  Steve Jobs)",
@@ -661,12 +696,16 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryCarrierPh: "e.g., T-Mobile 5G (Leave empty to keep unchanged)",
       primaryBadgeLabel: "Primary Badge",
       primaryBadgePh: "e.g., P, 1",
+      primaryTypeLabel: "Network Type",
       primaryBarsLabel: "Signal Bars",
+      partialLabel: "Live signal bars (partial override)",
+      partialHint: "Omit displayValue/type: bars fall back to live data and the network-type label is suppressed; the name may still persist in Airplane Mode",
       cardTitleSecondary: "Secondary SIM (Dual SIM Optional)",
       secCarrierLabel: "Secondary Carrier Name",
       secCarrierPh: "e.g., Verizon 5G (Leave empty for Single SIM)",
       secBadgeLabel: "Secondary Badge",
       secBadgePh: "e.g., S, 2",
+      secTypeLabel: "Secondary Type",
       secBarsLabel: "Secondary Bars",
       cardTitleFootnote: "Lock Screen Footnote",
       footnotePh: "Signature above Home Bar (Optional, e.g.,  Steve Jobs)",
@@ -763,13 +802,17 @@ HTML_PAGE = f"""<!DOCTYPE html>
     document.getElementById('primaryCarrier').placeholder = dict.primaryCarrierPh;
     document.getElementById('t_primaryBadgeLabel').innerText = dict.primaryBadgeLabel;
     document.getElementById('primaryBadge').placeholder = dict.primaryBadgePh;
+    document.getElementById('t_primaryTypeLabel').innerText = dict.primaryTypeLabel;
     document.getElementById('t_primaryBarsLabel').innerText = dict.primaryBarsLabel;
+    document.getElementById('t_partialLabel').innerText = dict.partialLabel;
+    document.getElementById('t_partialHint').innerText = dict.partialHint;
 
     document.getElementById('t_cardTitleSecondary').innerText = dict.cardTitleSecondary;
     document.getElementById('t_secCarrierLabel').innerText = dict.secCarrierLabel;
     document.getElementById('secCarrier').placeholder = dict.secCarrierPh;
     document.getElementById('t_secBadgeLabel').innerText = dict.secBadgeLabel;
     document.getElementById('secBadge').placeholder = dict.secBadgePh;
+    document.getElementById('t_secTypeLabel').innerText = dict.secTypeLabel;
     document.getElementById('t_secBarsLabel').innerText = dict.secBarsLabel;
 
     document.getElementById('t_cardTitleFootnote').innerText = dict.cardTitleFootnote;
@@ -890,9 +933,12 @@ HTML_PAGE = f"""<!DOCTYPE html>
       carrier: document.getElementById('primaryCarrier').value.trim() || null,
       badge: document.getElementById('primaryBadge').value.trim() || null,
       bars: document.getElementById('primaryBars').value ? parseInt(document.getElementById('primaryBars').value) : null,
+      type: document.getElementById('primaryType').value || '5g',
+      partial: document.getElementById('partialMode').checked,
       secondary_carrier: document.getElementById('secCarrier').value.trim() || null,
       secondary_badge: document.getElementById('secBadge').value.trim() || null,
       secondary_bars: document.getElementById('secBars').value ? parseInt(document.getElementById('secBars').value) : null,
+      secondary_type: document.getElementById('secType').value || '5g',
       force_overwrite: forceOverwrite,
     }};
 
@@ -1093,6 +1139,7 @@ def execute_deploy_worker(body: dict):
     try:
         is_reset = body.get("reset", False)
         force_overwrite = body.get("force_overwrite", False)
+        partial = bool(body.get("partial", False))
 
         target_device, wired = find_target_device()
         if not target_device:
@@ -1118,15 +1165,60 @@ def execute_deploy_worker(body: dict):
             details_en="Parsing fields and constructing NSKeyedArchiver bplist..." + transport_note_en,
         )
 
+        primary_type = NETWORK_TYPES.get(body.get("type", "5g"), 10)
+        secondary_type = NETWORK_TYPES.get(body.get("secondary_type", "5g"), 10)
+
         payload = build_cellular_archive(
             primary_carrier=body.get("carrier"),
             primary_bars=body.get("bars") if body.get("bars") is not None else 4,
+            primary_type=primary_type,
             primary_badge=body.get("badge"),
             secondary_carrier=body.get("secondary_carrier"),
             secondary_bars=body.get("secondary_bars") if body.get("secondary_bars") is not None else 4,
+            secondary_type=secondary_type,
             secondary_badge=body.get("secondary_badge"),
             is_reset=is_reset,
+            partial=partial,
         )
+
+        if is_reset and force_overwrite:
+            set_progress(
+                30,
+                step_zh="复位自愈阶段: 清除已存在归档",
+                step_en="Reset Phase: Evicting Existing Archive",
+                details_zh="正在下发 self-eviction 重置载荷...",
+                details_en="Dispatching self-eviction payload...",
+            )
+            reset_payload = build_cellular_archive(is_reset=True)
+            res1 = deploy_carrier(udid, reset_payload)
+            if not res1.get("ok"):
+                set_progress(
+                    30,
+                    step_zh="复位注入失败",
+                    step_en="Reset Phase Failed",
+                    error_zh="清除旧文件阶段注入失败。",
+                    error_en="Failed to inject self-eviction payload.",
+                )
+                return
+
+            set_progress(
+                60,
+                step_zh="复位自愈阶段: 重启生效",
+                step_en="Reset Phase: Rebooting for Eviction",
+                details_zh="触发用户空间快速重启以触发 SpringBoard 磁盘自愈清理...",
+                details_en="Triggering userspace reboot for SpringBoard auto-eviction...",
+            )
+            reboot_device(udid, style="userspace")
+            wait_for_device_reconnect(udid, timeout_seconds=60)
+            set_progress(
+                100,
+                step_zh="复位完成",
+                step_en="Reset Completed",
+                details_zh="SpringBoard 已成功自愈清除旧归档并恢复官方原生运营商！",
+                details_en="SpringBoard self-evicted the archive and restored native carrier!",
+                completed=True,
+            )
+            return
 
         if force_overwrite and not is_reset:
             set_progress(
@@ -1287,7 +1379,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             )
 
     def send_json(self, payload: dict, status: int = 200):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
@@ -1295,7 +1387,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
-        global SERVER_RUNNING
+        global SERVER_RUNNING, DEVICE_OPERATION_ACTIVE
         parsed = urlparse(self.path)
         if parsed.path == "/api/shutdown":
             self.send_response(200)
@@ -1304,25 +1396,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
             SERVER_RUNNING = False
             threading.Thread(target=lambda: os._exit(0)).start()
         elif parsed.path == "/api/deploy":
-            length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length))
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            thread = threading.Thread(target=execute_deploy_worker, args=(body,), daemon=True)
-            thread.start()
-            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
-        elif parsed.path == "/api/repair":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            usb_dev, _wired = find_target_device()
-            if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}, ensure_ascii=False).encode("utf-8"))
-                return
             try:
+                length = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(length))
+                thread = threading.Thread(target=execute_deploy_worker, args=(body,), daemon=True)
+                thread.start()
+                self.send_json({"ok": True})
+            except Exception as error:
+                self.send_json({"ok": False, "error": str(error)}, status=400)
+        elif parsed.path == "/api/repair":
+            DEVICE_OPERATION_ACTIVE += 1
+            try:
+                usb_dev, _wired = find_target_device()
+                if not usb_dev:
+                    self.send_json({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"})
+                    return
                 report = clean_device(usb_dev["udid"])
                 staging = report["staging"].get("operation", {})
                 payload = {
@@ -1331,35 +1419,36 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "remaining": staging.get("remaining", []),
                     "booksReset": report["booksCleaned"]["droppedFiles"],
                 }
+                self.send_json(payload)
             except Exception as error:
-                payload = {"ok": False, "error": str(error)}
-            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+                self.send_json({"ok": False, "error": str(error)})
+            finally:
+                DEVICE_OPERATION_ACTIVE -= 1
         elif parsed.path == "/api/respring":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            usb_dev, _wired = find_target_device()
-            if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}, ensure_ascii=False).encode("utf-8"))
-                return
+            DEVICE_OPERATION_ACTIVE += 1
             try:
+                usb_dev, _wired = find_target_device()
+                if not usb_dev:
+                    self.send_json({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"})
+                    return
                 activated = respring_device(usb_dev["udid"])
-                payload = {"ok": True, "pid": activated["pid"], "previousPid": activated["previousPid"], "seconds": activated["seconds"]}
+                self.send_json({"ok": True, "pid": activated["pid"], "previousPid": activated["previousPid"], "seconds": activated["seconds"]})
             except Exception as error:
-                payload = {"ok": False, "error": str(error)}
-            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+                self.send_json({"ok": False, "error": str(error)})
+            finally:
+                DEVICE_OPERATION_ACTIVE -= 1
         elif parsed.path == "/api/reboot":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-
-            usb_dev, _wired = find_target_device()
-            if not usb_dev:
-                self.wfile.write(json.dumps({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"}).encode("utf-8"))
-                return
-            res = trigger_platform_reboot(usb_dev["udid"])
-            self.wfile.write(json.dumps(res).encode("utf-8"))
+            DEVICE_OPERATION_ACTIVE += 1
+            try:
+                usb_dev, _wired = find_target_device()
+                if not usb_dev:
+                    self.send_json({"ok": False, "error": "未找到已连接的 iPhone。请用 USB 数据线连接设备并解锁屏幕（建议同时断开 iPhone 的 Wi-Fi）。"})
+                    return
+                self.send_json(trigger_platform_reboot(usb_dev["udid"]))
+            except Exception as error:
+                self.send_json({"ok": False, "error": str(error)})
+            finally:
+                DEVICE_OPERATION_ACTIVE -= 1
         else:
             self.send_json(
                 {"ok": False, "error": "unknown endpoint", "path": parsed.path,
@@ -1373,14 +1462,14 @@ def heartbeat_watcher():
     time.sleep(10)
     while SERVER_RUNNING:
         time.sleep(2)
-        if time.time() - LAST_HEARTBEAT > HEARTBEAT_TIMEOUT:
+        if DEVICE_OPERATION_ACTIVE == 0 and time.time() - LAST_HEARTBEAT > HEARTBEAT_TIMEOUT:
             print("\n[✓] 检测到控制台网页已关闭，命令行自动安全退出。")
             SERVER_RUNNING = False
             os._exit(0)
 
 
 def run_gui_server(port: int = 8765):
-    server = HTTPServer(("127.0.0.1", port), DashboardHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), DashboardHandler)
     url = f"http://127.0.0.1:{port}"
     print(f"\n=======================================================")
     print(f" 🚀 iOS 27 锁屏运营商控制台 (中英双语版) 已就绪!")

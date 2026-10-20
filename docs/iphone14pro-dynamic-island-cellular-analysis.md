@@ -41,7 +41,7 @@ SpringBoard 依据 `StatusBarOverrides.archive` 中的 `STStatusBarData` 内容�
 - **字段配置**：仅提供 `cellularEntry`，不包含 `secondaryCellularEntry`。
 - **渲染特征**：
   - 右耳蜂窝图标呈现为标准的 **4 格全高渐变垂直信号条**。
-  - 信号强度由 `displayValue`（0 ~ 4）严格控制。
+  - 信号强度由 `displayValue`（0 ~ 4）控制——**该结论在 2026-10-19 的实机测试中需要修正/复核**：使用 `-b 3` 部署后，锁屏右耳仍显示 4 点（满格），提示锁屏渲染面可能并不消费 archive 的 `displayValue`，而是使用实时遥测数据。待用 `-b 0/1` 控制实验分别对比锁屏与 Control Center 两个渲染面后再下结论。
   - 网络制式（`type: 10` 对应 5G，`type: 9` 对应 LTE）在 Wi-Fi 未连接或隐藏时动态显式。
 - **归档大小**：~975 字节。
 

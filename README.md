@@ -16,8 +16,8 @@
 | Target Feature | iOS 27.x Status | Core Mechanism | Viability & Scope |
 |---|---|---|---|
 | **Lock Screen Footnote** | 🟢 **VIABLE** | `SharedDeviceConfiguration.plist` under `com.apple.shareddeviceconfiguration` | **Universal (100%)** — Native Apple MDM profile (`.mobileconfig`) or Protective Backup Injection via `SysSharedContainerDomain`. Zero exploit required. (Note: specific policy configurations may require Supervision). |
-| **Carrier Name Override (Static)** | 🟢 **VERIFIED (BREAKTHROUGH)** | Modern `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **Verified End-to-End on Physical Hardware** — Officially merged into [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) (v9.5.1 / v9.5.2) and confirmed **"Verified end-to-end by me and other users"** by GoldenNugget lead developer (`@awesomenull`) across physical iOS 27 hardware via the `HomeDomain` backup restore pipeline (`MobileBackup2`). Pins full cellular entry (static override; persistent across Airplane Mode / fixed bars). |
-| **Dynamic Carrier & Real Signal (Upstream)** | 🔬 **RESEARCH BREAKTHROUGH** | `CommCenter` / `libCommCenterBase` PLMN dictionary mapping (`InterCarrierRoamingDisplayNames`) | **Sole Viable Upstream Direction** — Reverse engineering and ARM64e disassembly disproved field-level overrides in `StatusBarData` (atomic object replacement) and `SystemStatusDefaults`. Discovered `NetworkListOperator::getLocalizedCompositeName` (`0x1b3db050c`) dictionary lookup and `/var/mobile/Library/Preferences/` (`com.apple.operator_1.merged.plist`) mapping, preserving real baseband signal and Airplane Mode decoupling. Detailed in [`iOS27_Dynamic_Carrier_Research_Status.md`](iOS27_Dynamic_Carrier_Research_Status.md) and [`docs/commcenter-dynamic-carrier-reverse-engineering.md`](docs/commcenter-dynamic-carrier-reverse-engineering.md). |
+| **Carrier Name Override (Static)** | 🟢 **VERIFIED (BREAKTHROUGH)** | Modern `StatusBarOverrides.archive` (`_SBSystemStatusStatusBarOverridesArchiveRecord`) | **Verified End-to-End on Physical Hardware** — Officially merged into [GoldenNugget](https://github.com/GoldenNugget-Team/GoldenNugget) (v9.5.1 / v9.5.2) and confirmed **"Verified end-to-end by me and other users"** by GoldenNugget lead developer (`@awesomenull`) across physical iOS 27 hardware via the `HomeDomain` backup restore pipeline (`MobileBackup2`). Full entry pins the bars in Control Center; `--partial` omits `displayValue`/`type`, so both the lock screen and Control Center fall back to live bars and no type label is shown. Carrier text still persists across Airplane Mode (the name requires `status = 5`). |
+| **Dynamic Carrier & Real Signal (Upstream)** | 🔴 **EXPERIMENTALLY BLOCKED (iOS 27.0.1)** | Signed carrier bundle (`/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`) + CommCenter state in `/var/wireless/Library/Preferences/` | **No non-jailbreak write path** — disassembly disproved field-level overrides in `StatusBarData`, and the physical experiments on iPhone 14 Pro (27.0.1) showed that CommCenter persists no carrier-name data in HomeDomain: its state lives in `WirelessDomain` (owned by `_wireless`, not writable from the mobile/AirLift context) and the operator name is bundle-sourced. Injecting `InterCarrierRoamingDisplayNames`/`CarrierName` into twelve HomeDomain domains had no effect even after cold-restarting cfprefsd/CommCenter/SpringBoard. Static `StatusBarOverrides.archive` remains the only working method. Evidence: [`handoff`](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md). |
 
 ---
 
@@ -44,10 +44,17 @@ Our reverse engineering of `SBSystemStatusStatusBarOverridesArchiver` successful
    - ✅ **Offline / Unit Test**: Data structure creation and parsing validated (`tools/test_statusbar_archive.py`).
    - ✅ **Physical Hardware (End-to-End Confirmed)**: In commit [`dbb000cb`](https://github.com/GoldenNugget-Team/GoldenNugget/commit/dbb000cb248e91a0ad53378a5f5d227d1540d562) and official documentation ([`docs/iOS27_StatusBar_Research.md`](https://github.com/GoldenNugget-Team/GoldenNugget/blob/main/docs/iOS27_StatusBar_Research.md)), lead maintainer `@awesomenull` updated the verification status to **`"Verified end-to-end by me and other users"`**. Real hardware tests confirmed byte-for-byte fidelity against physical iOS 27 dumps via `tools/deploy_statusbar_archive.py` and `tools/fetch_statusbar_archive.py`.
 4. **AirLift Channel — Physical End-to-End Verification (this repository)**: The in-repo AirLift channel was verified on **iPhone 16 Pro Max (iPhone17,2), iOS 27.0 (24A437)** over USB:
-   - ✅ **Byte-exact delivery**: the written `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` was fetched back through the AirTraffic readback asset and compared byte-for-byte with the payload.
+   - ✅ **Byte-exact delivery (24A437)**: the written `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` was fetched back through the AirTraffic readback asset and compared byte-for-byte with the payload. On iOS 27.0.1 (24A446) the AFC daemon refuses file reads outside `/var/mobile/Media`, so that readback is unavailable on the newer build (see limitation 6).
    - ✅ **Rendered on the device**: the custom carrier string (`CMHK`) is displayed in **Control Center** (Dynamic Island models do not render a carrier name in the home-screen status bar).
    - ✅ **Persistent**: once SpringBoard has adopted the record, the overrides survive full device reboots (see limitation 4).
    - ✅ **Failure handling**: injected Books-preimage drift was detected, rolled back and retried automatically, and every staging failure left zero residue (`airlift-*` trees and Books staging rows restored).
+5. **Upstream CommCenter Channel (Route A) — prepared and partially verified on iPhone 14 Pro / iOS 27.0.1 (24A446)**: the `InterCarrierRoamingDisplayNames` PLMN mapping is the only known way to rename the carrier while keeping live baseband bars and Airplane Mode decoupling, so the physical experiment is now wired end-to-end:
+   - ✅ **Target network identified**: the test device is on **China Unicom** (`中国联通`, PLMN `46001`/`46006`/`46009`/`46010`).
+   - ✅ **Verification surface**: the iPhone 14 Pro lock screen renders the carrier name next to the Dynamic Island, so the effect is observable from a screenshot without unlocking.
+   - ✅ **Recon boundary measured**: AFC can `stat` HomeDomain paths through the AirLift traversal link (`status=8` = missing, `status=10` = present), but **cannot read file data outside `/var/mobile/Media`** on this build; all candidate `com.apple.operator_*` / `com.apple.carrier_*` preference domains are absent on a stock device (writing them therefore creates new domains rather than overwriting settings).
+   - ✅ **Write channel confirmed on 24A446**: a probe override (`ZZTEST9`) written through AirLift appeared on the lock screen, and a SpringBoard-only respring does **not** clear an already-adopted override (a userspace/full reboot is required).
+   - 📌 **Important correction on the display-domain lineage**: the project's direction has always been the *display* domain. On iOS ≤16 the legacy `statusBarOverrides` C struct (`StatusBarOverrideData`) used **per-field override flags**, so Nugget/Cowabunga could override only the carrier string and leave live baseband bars and Airplane-Mode behaviour intact. iOS 27 replaced that with `STStatusBarData` entries that are replaced **as whole objects**, which is where the "static" regression comes from — not from the display-domain idea itself. Whether iOS 27 still has a partial-override path (archive sentinel, `recordByApplyingRecord:`, or a different render surface such as the lock screen) is the current open question; see the [progress snapshot](docs/handoffs/iOS27_Research_Progress_Snapshot_2026-10-19.md).
+   - ❌ **Route A verdict (24A446, home network): negative, and the data model is now measured**. Twelve HomeDomain candidate domains (base / slot 1 / slot 2 × `operator` / `carrier` × plain / `.merged`) were created with `InterCarrierRoamingDisplayNames` + `CarrierName` + `ShowCarrierName`, and `cfprefsd`, `CommCenter` and `SpringBoard` were cold-restarted through the CoreDevice signal channel while the device was unlocked; the carrier name stayed `中国联通`. A trusted filtered backup then showed the real layout: PLMN `46001`, `CarrierBundleName = 46001`, CommCenter state only in **`WirelessDomain`** (`/var/wireless/Library/Preferences/com.apple.commcenter.plist` and friends), no `operator_1`/`carrier_1` domain anywhere, and the display name sourced from the signed system bundle `/System/Library/Carrier Bundles/iPhone/46001/carrier.plist`. HomeDomain is therefore the wrong layer, and `/var/wireless` plus the sealed bundle are not writable from the mobile/AirLift context. The 12 domains were neutralised with empty dictionaries. Full evidence chain: [handoff](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md).
 
 ---
 
@@ -88,7 +95,7 @@ Reverse engineering of `SBSystemStatusStatusBarOverridesArchiver` in `SpringBoar
 - **`systemstatusd` Memory Sync & Cache Invalidation**: On iOS 27, the `systemstatusd` system daemon maintains publisher records in memory. When updating live, restarting both `systemstatusd` and `SpringBoard` prevents in-memory cache from overwriting the newly injected archive.
 
 ### 3. Dynamic Carrier Reverse Engineering & CommCenter Upstream Breakthrough
-While `StatusBarOverrides.archive` successfully renders custom carrier text on iOS 27, it operates as a static mock: custom text remains visible when Airplane Mode is enabled, and signal bars remain fixed at 4 bars rather than reflecting live baseband strength. Our latest reverse engineering of iOS 27 system binaries (`UIKitCore`, `SystemStatus.framework`, `CoreTelephony.framework`, and `libCommCenterBase.dylib` across 4,088 dyld cache images) addressed these limitations:
+While `StatusBarOverrides.archive` successfully renders custom carrier text on iOS 27, it is a static mock in two respects: the custom text remains visible when Airplane Mode is enabled, and the Control Center cellular module renders whatever `displayValue` the archive contains. On iPhone 14 Pro / iOS 27.0.1, however, the **lock-screen** signal indicator keeps tracking live baseband dots even when the archive requests 1 bar — the two render surfaces do not consume the override in the same way (measured 2026-10-19; see the [progress snapshot](docs/handoffs/iOS27_Research_Progress_Snapshot_2026-10-19.md)). Our latest reverse engineering of iOS 27 system binaries (`UIKitCore`, `SystemStatus.framework`, `CoreTelephony.framework`, and `libCommCenterBase.dylib` across 4,088 dyld cache images) addressed these limitations:
 
 #### Disproof of Static & Status Bar Paths
 - **Direction 3 (`StatusBarOverrides` Field-Level Passthrough) — Thoroughly Disproved (Dead End)**:
@@ -173,6 +180,9 @@ cd airlift && make && cd ..
 # Single SIM: Set custom carrier name
 python3 tools/airlift_carrier_deploy.py -c "MyCarrier 5G" -b 4 -t 5g
 
+# Recommended: partial override — custom name + LIVE signal bars, no network-type label
+python3 tools/airlift_carrier_deploy.py -c "MyCarrier 5G" --partial
+
 # Dual SIM: Set primary and secondary carriers with badges
 python3 tools/airlift_carrier_deploy.py \
   -c "CMI" --badge "P" \
@@ -196,6 +206,7 @@ python3 tools/airlift_carrier_deploy.py -i
 
 # Launch Web GUI Dashboard
 python3 tools/gui_server.py
+# Tick "Live signal bars (partial override)" in the GUI for the partial-entry behaviour.
 
 # Tip: disconnect the iPhone Wi-Fi (Settings > Wi-Fi) and use a USB cable. The GUI
 # still proceeds over a local-network connection, but it warns and USB is recommended.
@@ -210,7 +221,28 @@ python3 tools/airlift_carrier_deploy.py --clean-device
 python3 tools/airlift_resilience_check.py --yes
 ```
 
-### 2. Standalone Archive Generator & Simulator Deployer (`tools/generate_statusbar_archive.py`)
+### 2. Upstream CommCenter Preference Experiment (Route A)
+```bash
+# Read-only HomeDomain recon through the AirLift traversal link (stat / list / read)
+python3 tools/device_path_probe.py --udid <UDID> \
+  --stat /var/mobile/Library/SpringBoard/StatusBarOverrides.archive
+
+# Build the InterCarrierRoamingDisplayNames mapping without touching a device
+python3 tools/commcenter_carrier_inject.py -c "Custom 5G" --plmn china_unicom --dry-run
+
+# Inject it into the per-slot operator domains (HomeDomain / Library/Preferences)
+python3 tools/commcenter_carrier_inject.py -c "Custom 5G" --plmn china_unicom
+
+# Visual verification: screenshots and Control Center gestures via CoreDevice HID
+python3 tools/device_ui.py screenshot control-center.png
+python3 tools/device_ui.py open-cc
+
+# Restart cfprefsd / CommCenter / SpringBoard without rebooting (root signal channel)
+.venv/bin/pymobiledevice3 developer core-device list-processes --userspace
+.venv/bin/pymobiledevice3 developer core-device send-signal-to-process <pid> 15 --userspace
+```
+
+### 3. Standalone Archive Generator & Simulator Deployer (`tools/generate_statusbar_archive.py`)
 ```bash
 # Generate a custom binary archive file
 python3 tools/generate_statusbar_archive.py -c " Apple 5G" -b 4 -t 5g -o custom.archive
@@ -237,6 +269,11 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 ├── tools/                                             # Automation and deployment toolchain
 │   ├── airlift_carrier_deploy.py                      # Universal AirLift physical device deployer CLI
 │   ├── airlift_resilience_check.py                    # Device-side retry/rollback resilience check (device writes, needs --yes)
+│   ├── commcenter_carrier_inject.py                   # Route A: InterCarrierRoamingDisplayNames preference injector
+│   ├── device_path_probe.py                           # Read-only HomeDomain stat/list/read probe via the AirLift link
+│   ├── device_ui.py                                   # CoreDevice HID gesture / screenshot verification helper
+│   ├── statusbar_variant_lab.py                       # Field-subset archive variants (research)
+│   ├── airlift_archive_replace.py                     # Move-out + move-in archive replacement in one AirTraffic session
 │   ├── gui_server.py                                  # Bilingual web dashboard (deploy / repair / SpringBoard restart)
 │   ├── display_metrics.py                             # Dynamic Island width heuristics & truncation warnings
 │   ├── footnote_generator.py                          # Lock Screen footnote .mobileconfig generator
@@ -264,7 +301,9 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
     ├── handoffs/                                      # Chronological research handoff documents
     │   ├── iOS27_Carrier_LockScreen_Research_Handoff_2026-09-25.md
     │   ├── iOS27_Carrier_Footnote_Research_Handoff_2026-09-28.md
-    │   └── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   ├── iOS27_Carrier_Footnote_Latest_Research_2026-09-30.md
+    │   ├── iOS27_CommCenter_Preference_Injection_2026-10-19.md
+    │   └── iOS27_Research_Progress_Snapshot_2026-10-19.md
     ├── iOS27_Carrier_Footnote_Solution.md             # Complete technical solution & security verdict
     ├── architecture.md                                # Full customization architecture & security boundaries
     ├── carrier-data-flow.md                           # SIM -> CommCenter -> SystemStatusUI reverse engineering
@@ -297,7 +336,7 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 2. **ATAirlock `rename` Overwrite Constraint (AirLift-specific)**: AirTraffic's `-[ATAirlock processCompletedAsset:]` relies on Cocoa's `moveItemAtPath:toPath:error:`, which returns `NSFileWriteFileExistsError` when the destination file already exists. On iPhone 16 Pro Max / iOS 27.0 (24A437) overwriting an existing archive was measured to **succeed** (the archive fetched back matched the new payload byte-for-byte), so the constraint does not always bite — but it is build/path dependent, which is why `--force-overwrite` (two-phase: reset archive → reboot → fresh write) is kept as the safe path for updates. (The `HomeDomain` backup restore path avoids the question entirely.)
 3. **Lock Screen Footnote Supervision**: The `com.apple.shareddeviceconfiguration` payload is an official Apple MDM schema; in certain corporate or constrained environments, displaying the footnote on the lock screen may require device supervision.
 4. **Activation: the first injection needs one SpringBoard restart**: SpringBoard only reads `StatusBarOverrides.archive` while it is starting up, so an archive staged by AirLift while SpringBoard runs is never picked up on its own. The **first** injection therefore needs one SpringBoard restart (`--respring`, the GUI's "⚡ Restart SpringBoard" button, or standalone `python3 tools/airlift_carrier_deploy.py --respring`); a reboot alone is not enough at that moment. Once SpringBoard has loaded the record and written its own copy back, the overrides **persist across full reboots** (verified on iPhone 16 Pro Max / iOS 27.0 24A437). On Dynamic Island models the carrier text is rendered in **Control Center**, not in the home-screen status bar.
-5. **Overrides Are Static (Current StatusBarOverrides Pipeline) & Dynamic Upstream Solution**: The archive does not merely rename the carrier, it pins the entire cellular entry (`enabled = true`, `status = 5`, `type = <network type>`, `displayValue = <bars>`, `string`/`crossfadeString`). Our reverse engineering of `UIKitCore` (`-[_UIStatusBarData dataByApplyingOverlay:]` @ `0x1c80148f4`) proved that `SystemStatus` performs an atomic pointer replacement of the `STStatusBarDataCellularEntry` object with zero field-level pass-through, causing custom text to stay visible in Airplane Mode and signal bars to remain fixed. To achieve genuine live baseband signal and authentic Airplane Mode decoupling, our upstream research has bypassed the status bar domain entirely and moved into `CommCenter` (`libCommCenterBase.dylib`), discovering the `InterCarrierRoamingDisplayNames` PLMN dictionary resolution mechanism (`0x1b3db050c`) and `/var/mobile/Library/Preferences/` (`com.apple.operator_1.merged.plist`) preference injection vector. Full analysis and next-step experimental roadmap are documented in [`iOS27_Dynamic_Carrier_Research_Status.md`](iOS27_Dynamic_Carrier_Research_Status.md) and [`docs/commcenter-dynamic-carrier-reverse-engineering.md`](docs/commcenter-dynamic-carrier-reverse-engineering.md).
+5. **Overrides Are Static (Current StatusBarOverrides Pipeline) & Dynamic Upstream Solution**: The archive does not merely rename the carrier, it pins the entire cellular entry (`enabled = true`, `status = 5`, `type = <network type>`, `displayValue = <bars>`, `string`/`crossfadeString`). Our reverse engineering of `UIKitCore` (`-[_UIStatusBarData dataByApplyingOverlay:]` @ `0x1c80148f4`) proved that `SystemStatus` performs an atomic pointer replacement of the `STStatusBarDataCellularEntry` object with zero field-level pass-through, causing custom text to stay visible in Airplane Mode and Control Center signal bars to remain fixed. Measured nuance (iPhone 14 Pro / 27.0.1): a `-b 1` archive rendered four live dots on the lock screen (live baseband) while Control Center rendered the overridden 1 bar; the Airplane-Mode name persistence affects both surfaces. **Partial mode (`--partial`)** now omits `displayValue`/`type`: both surfaces fall back to live bars and the type label is suppressed, but the carrier string still requires `status = 5`, so it still persists in Airplane Mode. True runtime decoupling would require publishing `STStatusBarOverridesStatusDomain` from an entitled process (`com.apple.systemstatus.publisher`, SpringBoard injection), which is a jailbreak/TrollStore-class capability. Note that a **native** iPhone also shows the live carrier/type next to Wi-Fi in the Control Center status bar; that is not an override artefact. The lock screen / home status bar shows only the carrier + Wi-Fi. A full entry pins the type, while `--partial` suppresses it. To achieve genuine live baseband signal and authentic Airplane Mode decoupling, our upstream research has bypassed the status bar domain entirely and moved into `CommCenter` (`libCommCenterBase.dylib`), discovering the `InterCarrierRoamingDisplayNames` PLMN dictionary resolution mechanism (`0x1b3db050c`) and `/var/mobile/Library/Preferences/` (`com.apple.operator_1.merged.plist`) preference injection vector. Full analysis and next-step experimental roadmap are documented in [`iOS27_Dynamic_Carrier_Research_Status.md`](iOS27_Dynamic_Carrier_Research_Status.md) and [`docs/commcenter-dynamic-carrier-reverse-engineering.md`](docs/commcenter-dynamic-carrier-reverse-engineering.md).
 6. **Staging Robustness & Verification Honesty**: `stage` now retries up to 3 times with a fresh staging token and a fresh Books preimage, and every failed attempt is rolled back automatically, so a transient device-side Books write no longer strands `/var/mobile/Media/airlift-src-*` trees or stale asset rows in `Books.plist`. The AFC daemon is confined to the media sandbox, so the deployed archive can only be *probed* through the staging symlink (a non-missing `st_mode` stat means it exists); byte-exact readback would require moving the archive back out of SpringBoard, so the CLI reports `Byte Verification: unavailable` instead of inventing a result. Run `--clean-device` after any hard failure (e.g. the process was killed mid-deploy) to restore a pristine staging state.
 
 ---

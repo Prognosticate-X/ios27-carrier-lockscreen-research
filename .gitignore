@@ -5,3 +5,5 @@ build/
 *.bin
 *.log
 *.tmp
+.artifacts/
+.venv/
