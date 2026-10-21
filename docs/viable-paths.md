@@ -36,12 +36,10 @@
 - **理由：** 必须写入 `/var/preferences/FeatureFlags/Settings.plist`，但 BackupAgent 白名单 + Security Recovery Wipe 彻底阻断了非越狱写入。
 
 ### 2.2 路线 2：Carrier Bundle / CommCenter 覆盖
-- **现状：** 待固件逆向与数据流梳理。
-- **机制：**
-  运营商显示文本来自 SIM 卡 SPN (Service Provider Name) 或 `Carrier Bundles`（位于 `/System/Library/Carrier Bundles/` 或 `/var/mobile/Library/Carrier Bundles/`）。
-- **可行性挑战：**
-  - 系统 Carrier Bundle 在只读系统卷（SSV），无法修改。
-  - 用户 Carrier Bundle 位于 `/var/mobile/Library/Carrier Bundles/Overlay`，需排查该目录是否允许通过常规备份恢复或是否有格式校验与数字签名。
+- **现状：** **已通过实机逆向与偏好注入彻底证伪（无越狱下不可行）。**
+- **机制与证伪证据：**
+  - 实机测试（iPhone 14 Pro, iOS 27.0.1）验证：CommCenter 运行在 `_wireless` (UID 257) 下，状态与缓存存储于 `/var/wireless/Library/Preferences/`，非越狱备份注入的 HomeDomain (`/var/mobile/`) 完全被 CommCenter 忽略。
+  - 系统 Carrier Bundle 位于 SSV（Sealed System Volume）只读卷宗，且受 `VerifyCarrierBundles = TRUE` 强校验保护，未签名 bundle 会被基带直接拒认。详见 [`docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
 
 ### 2.3 路线 3：SystemStatusUI 现代状态栏直接配置
 - **现状：** 待逆向分析。
@@ -55,7 +53,11 @@
 ### 2.5 路线 5：现代 `StatusBarOverrides.archive` 归档管道
 - **现状：** **已获主流开源套件（GoldenNugget）主线正式合并并发布（v9.5.1/v9.5.2），物理真机端到端全量实测验证通过（Verified end-to-end by developer and users）**。
 - **机制：** SpringBoard 内置 `SBSystemStatusStatusBarOverridesArchiver`，会从 `/var/mobile/Library/SpringBoard/StatusBarOverrides.archive` 反序列化 `STStatusBarData` 并发布至 `SystemStatusUI`。
+- **逆向分析与动态限制（终局事实）：**
+  - **原子覆盖证明**：反汇编 `-[STStatusBarData dataByApplyingOverlay:]` (`0x20e4ac960`) 证明，覆写是以整个 `cellularEntry` 指针为单位完全替换，不存在字段级回退。静态归档下名称要求 `status=5, enabled=true`，因此开辟飞行模式后名称依然静态常驻，无法实现自动隐藏。
+  - **`--partial` 模式评估**：省略 `displayValue` / `type` 会在解码时置 0，导致 5G/LTE 制式文字被抑制，且飞行模式依然无法隐藏，因此不推荐在生产中使用。
+  - **VPN 徽标丢失修复**：早期 GoldenNugget 等方案由于向 `suppressedBackgroundActivityIdentifiers` 注入了 VPN 标识或序列化了残缺的 `vpnEntry`，导致系统 VPN 徽标消失。本仓库已彻底修复此问题：默认 `auto` 模式下清空抑制集合并不提及 `vpnEntry`，实现系统原生真实 VPN 徽标 100% 透传显示；同时支持 `--vpn {auto,on,off}` 显式控制。详见 [`docs/handoffs/iOS27_Dynamic_Carrier_and_VPN_Resolution_2026-10-21.md`](handoffs/iOS27_Dynamic_Carrier_and_VPN_Resolution_2026-10-21.md)。
 - **交付途径：**
   - **途径 A（GoldenNugget HomeDomain 备份恢复管道，官方推荐）：** 该归档文件归属 `HomeDomain`，可通过标准 `MobileBackup2` 备份恢复直接送入系统，无须越狱或漏洞逃逸，且彻底绕过了 AirTraffic 的 rename 覆盖限制。已被 GoldenNugget 主线合并（v9.5.1+）并在物理真机硬件上全量测试通过。
-  - **途径 B（AirLift 独立通道）：** 通过 AirTraffic Books 同步管道写入，受限于 ATAirlock rename 覆盖限制，需依赖首次安装或空归档自删复位机制。
+  - **途径 B（AirLift 独立通道）：** 通过 AirTraffic Books 同步管道写入，受限于 ATAirlock rename 覆盖限制，需依赖首次安装或空归档自删复位机制（`--force-overwrite`）。
   - **途径 C（CoreSimulator 模拟器）：** 宿主直写，格式反序列化与状态栏 UI 渲染均已实测验证通过。

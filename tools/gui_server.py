@@ -253,7 +253,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
       margin-bottom: 6px;
       display: block;
     }}
-    .optional-tag {{
+    .optional-tag, .hint-text {{
       font-size: 11px;
       color: var(--muted);
       font-weight: 400;
@@ -470,7 +470,21 @@ HTML_PAGE = f"""<!DOCTYPE html>
         <input type="checkbox" id="partialMode" style="width: 16px; height: 16px;">
         <span id="t_partialLabel">保留实时信号格（部分覆写）</span>
       </label>
-      <span class="optional-tag" id="t_partialHint">不写 displayValue/type；信号格回退实时、制式文字被抑制；名称仍可能飞行模式常驻</span>
+      <span class="hint-text" id="t_partialHint">不写 displayValue/type；信号格回退实时、制式文字被抑制；名称仍可能飞行模式常驻</span>
+    </div>
+
+    <div class="row" style="align-items: center; gap: 10px; margin-top: 4px;">
+      <div style="width: 220px;">
+        <label><span id="t_vpnModeLabel">VPN 徽标状态</span><span class="hint-text" id="t_optVpn">(状态栏/控制中心)</span></label>
+        <select id="vpnMode">
+          <option value="auto" id="t_vpnAuto">自动 (原生透传，修复GN丢失)</option>
+          <option value="on" id="t_vpnOn">强制常驻显示</option>
+          <option value="off" id="t_vpnOff">强制隐藏</option>
+        </select>
+      </div>
+      <div class="col" style="margin-top: 18px;">
+        <span class="hint-text" id="t_vpnHint" style="line-height: 1.4;">自动模式不抑制 com.apple.systemstatus.status-item.VPN，解决 GoldenNugget 等工具导致 VPN 图标丢失的问题</span>
+      </div>
     </div>
 
     <div class="card-title" style="margin-top: 4px;" id="t_cardTitleSecondary">副卡设置 (Secondary SIM / 双卡可选)</div>
@@ -626,6 +640,12 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryBarsLabel: "信号格数",
       partialLabel: "保留实时信号格（部分覆写）",
       partialHint: "不写 displayValue/type；信号格与制式回退实时，名称仍可能飞行模式常驻",
+      vpnModeLabel: "VPN 徽标状态",
+      optVpn: "(状态栏/控制中心)",
+      vpnAuto: "自动 (原生透传，修复GN丢失)",
+      vpnOn: "强制常驻显示",
+      vpnOff: "强制隐藏",
+      vpnHint: "自动模式不抑制 com.apple.systemstatus.status-item.VPN，解决 GoldenNugget 等工具导致 VPN 图标丢失的问题",
       cardTitleSecondary: "副卡设置 (Secondary SIM / 双卡可选)",
       secCarrierLabel: "副卡运营商名称",
       secCarrierPh: "例如：中国联通 5G (单卡用户请留空)",
@@ -700,6 +720,12 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryBarsLabel: "Signal Bars",
       partialLabel: "Live signal bars (partial override)",
       partialHint: "Omit displayValue/type: bars fall back to live data and the network-type label is suppressed; the name may still persist in Airplane Mode",
+      vpnModeLabel: "VPN Badge State",
+      optVpn: "(Status Bar / CC)",
+      vpnAuto: "Auto (Live passthrough, fixes GN loss)",
+      vpnOn: "Force Always Visible",
+      vpnOff: "Force Hidden",
+      vpnHint: "Auto mode does not suppress com.apple.systemstatus.status-item.VPN, resolving VPN icon loss caused by GoldenNugget",
       cardTitleSecondary: "Secondary SIM (Dual SIM Optional)",
       secCarrierLabel: "Secondary Carrier Name",
       secCarrierPh: "e.g., Verizon 5G (Leave empty for Single SIM)",
@@ -806,6 +832,12 @@ HTML_PAGE = f"""<!DOCTYPE html>
     document.getElementById('t_primaryBarsLabel').innerText = dict.primaryBarsLabel;
     document.getElementById('t_partialLabel').innerText = dict.partialLabel;
     document.getElementById('t_partialHint').innerText = dict.partialHint;
+    document.getElementById('t_vpnModeLabel').innerText = dict.vpnModeLabel;
+    document.getElementById('t_optVpn').innerText = dict.optVpn;
+    document.getElementById('t_vpnAuto').innerText = dict.vpnAuto;
+    document.getElementById('t_vpnOn').innerText = dict.vpnOn;
+    document.getElementById('t_vpnOff').innerText = dict.vpnOff;
+    document.getElementById('t_vpnHint').innerText = dict.vpnHint;
 
     document.getElementById('t_cardTitleSecondary').innerText = dict.cardTitleSecondary;
     document.getElementById('t_secCarrierLabel').innerText = dict.secCarrierLabel;
@@ -935,6 +967,7 @@ HTML_PAGE = f"""<!DOCTYPE html>
       bars: document.getElementById('primaryBars').value ? parseInt(document.getElementById('primaryBars').value) : null,
       type: document.getElementById('primaryType').value || '5g',
       partial: document.getElementById('partialMode').checked,
+      vpn: document.getElementById('vpnMode').value,
       secondary_carrier: document.getElementById('secCarrier').value.trim() || null,
       secondary_badge: document.getElementById('secBadge').value.trim() || null,
       secondary_bars: document.getElementById('secBars').value ? parseInt(document.getElementById('secBars').value) : null,
@@ -1167,6 +1200,8 @@ def execute_deploy_worker(body: dict):
 
         primary_type = NETWORK_TYPES.get(body.get("type", "5g"), 10)
         secondary_type = NETWORK_TYPES.get(body.get("secondary_type", "5g"), 10)
+        vpn_arg = body.get("vpn", "auto")
+        vpn_mode = True if vpn_arg == "on" else (False if vpn_arg == "off" else None)
 
         payload = build_cellular_archive(
             primary_carrier=body.get("carrier"),
@@ -1179,6 +1214,7 @@ def execute_deploy_worker(body: dict):
             secondary_badge=body.get("secondary_badge"),
             is_reset=is_reset,
             partial=partial,
+            vpn=vpn_mode,
         )
 
         if is_reset and force_overwrite:
