@@ -85,6 +85,47 @@ class TestAirliftFeatures(unittest.TestCase):
         self.assertTrue(entry["enabled"])
         self.assertEqual(entry["status"], 5)
 
+    def test_vpn_handling_modes(self):
+        """Test VPN modes: auto (None), on (True), off (False)."""
+        import plistlib
+        from airlift_carrier_deploy import build_cellular_archive as deploy_build
+        from generate_statusbar_archive import build_cellular_archive as gen_build
+
+        for builder in (deploy_build, gen_build):
+            def parse_data(payload):
+                plist = plistlib.loads(payload)
+                objects = plist["$objects"]
+                def resolve(value):
+                    return objects[value.data] if isinstance(value, plistlib.UID) else value
+                record = resolve(plist["$top"]["root"])
+                data = resolve(record["statusBarData"])
+                return record, data, resolve, objects
+
+            # Auto mode: native pass-through, suppressedBackgroundActivityIdentifiers empty, vpnEntry omitted
+            p_auto = builder(primary_carrier="AutoVPN", vpn=None)
+            record, data, resolve, objects = parse_data(p_auto)
+            self.assertNotIn("vpnEntry", data)
+            suppressed = resolve(record.get("suppressedBackgroundActivityIdentifiers"))
+            self.assertEqual(suppressed.get("NS.objects"), [])
+
+            # On mode: vpnEntry enabled=True, class STStatusBarDataEntry
+            p_on = builder(primary_carrier="OnVPN", vpn=True)
+            record, data, resolve, objects = parse_data(p_on)
+            self.assertIn("vpnEntry", data)
+            vpn_entry = resolve(data["vpnEntry"])
+            self.assertTrue(vpn_entry["enabled"])
+            cls_vpn = objects[vpn_entry["$class"].data]
+            self.assertEqual(cls_vpn["$classname"], "STStatusBarDataEntry")
+
+            # Off mode: vpnEntry enabled=False, class STStatusBarDataEntry
+            p_off = builder(primary_carrier="OffVPN", vpn=False)
+            record, data, resolve, objects = parse_data(p_off)
+            self.assertIn("vpnEntry", data)
+            vpn_entry = resolve(data["vpnEntry"])
+            self.assertFalse(vpn_entry["enabled"])
+            cls_vpn = objects[vpn_entry["$class"].data]
+            self.assertEqual(cls_vpn["$classname"], "STStatusBarDataEntry")
+
     def test_footnote_generator(self):
         data = generate_footnote_profile("Test Footnote Text")
         self.assertIn(b"com.apple.shareddeviceconfiguration", data)

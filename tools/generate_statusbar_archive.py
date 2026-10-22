@@ -41,6 +41,7 @@ def build_cellular_archive(
     secondary_badge: Optional[str] = None,
     is_reset: bool = False,
     partial: bool = False,
+    vpn: Optional[bool] = None,
 ) -> bytes:
     """
     Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard.
@@ -191,8 +192,21 @@ def build_cellular_archive(
         uid_s_entry = add_obj(s_entry)
         data_dict["secondaryCellularEntry"] = uid_s_entry
 
+    uid_vpn_entry = None
+    if vpn is not None:
+        v_entry = {
+            "enabled": bool(vpn),
+        }
+        uid_vpn_entry = add_obj(v_entry)
+        data_dict["vpnEntry"] = uid_vpn_entry
+
     # Add Classes to objects
     uid_cls_entry = add_obj(cls_entry)
+    cls_vpn = {
+        "$classes": ["STStatusBarDataEntry", "NSObject"],
+        "$classname": "STStatusBarDataEntry",
+    }
+    uid_cls_vpn = add_obj(cls_vpn)
     uid_cls_data = add_obj(cls_data)
     uid_cls_set = add_obj(cls_set)
     uid_cls_record = add_obj(cls_record)
@@ -210,6 +224,8 @@ def build_cellular_archive(
         objects[uid_p_entry.data]["$class"] = uid_cls_entry
     if secondary_carrier:
         objects[uid_s_entry.data]["$class"] = uid_cls_entry
+    if uid_vpn_entry is not None:
+        objects[uid_vpn_entry.data]["$class"] = uid_cls_vpn
 
     plist_dict = {
         "$archiver": "NSKeyedArchiver",
@@ -255,6 +271,7 @@ def main():
     parser.add_argument("--secondary-badge", help="Secondary SIM badge (e.g. 'S', '2', '副卡')")
     parser.add_argument("--reset", action="store_true", help="Generate an empty reset archive to restore system default")
     parser.add_argument("--partial", action="store_true", help="Partial override: keep live signal bars and hide the network-type label (omit displayValue/type)")
+    parser.add_argument("--vpn", choices=["auto", "on", "off"], default="auto", help="VPN indicator mode: 'auto' (default, native live passthrough, unsuppressed), 'on' (force show VPN icon), 'off' (force hide VPN icon)")
     parser.add_argument("-i", "--inspect", help="Inspect an existing archive file")
     parser.add_argument("-o", "--output", default="StatusBarOverrides.archive", help="Output archive path")
     parser.add_argument("--deploy-simulator", nargs="?", const="booted", help="Deploy archive directly to a booted simulator (or specify UDID) and reload SpringBoard")
@@ -270,6 +287,8 @@ def main():
         print("\n[Error] Must specify at least -c/--carrier, -s/--secondary-carrier, or --reset")
         sys.exit(1)
 
+    vpn_mode = True if args.vpn == "on" else (False if args.vpn == "off" else None)
+
     payload = build_cellular_archive(
         primary_carrier=args.carrier,
         primary_bars=args.bars,
@@ -281,6 +300,7 @@ def main():
         secondary_badge=args.secondary_badge,
         is_reset=args.reset,
         partial=args.partial,
+        vpn=vpn_mode,
     )
 
     with open(args.output, "wb") as f:

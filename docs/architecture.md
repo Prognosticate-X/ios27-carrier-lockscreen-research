@@ -42,6 +42,35 @@ Footer Text Label                                                │
 
 ---
 
+## 2.1 状态栏覆写 Overlay 机制与 VPN 状态透传
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   SpringBoard Overlay Processing                       │
+│                                                                        │
+│   Native System Status Items                StatusBarOverrides.archive │
+│   (CommCenter, Baseband, VPN)               (_SBSystemStatus...Record) │
+│               │                                         │              │
+│               ▼                                         ▼              │
+│   [Base STStatusBarData] ─────────────► [-[STStatusBarData             │
+│   - cellularEntry (live baseband)        dataByApplyingOverlay:]]      │
+│   - vpnEntry (live VPN connection)                      │              │
+│               │                                         │              │
+│               ├─────────────────────────────────────────┤              │
+│               ▼                                         ▼              │
+│   [cellularEntry: Pointer Replace]        [vpnEntry: Native Passthrough]
+│   • 整个 cellularEntry 被覆盖              • overlay.vpnEntry == nil      │
+│   • 显示自定义运营商文字                   • 跳过替换，100% 透传系统 VPN   │
+│   • 静态属性无法解耦飞行模式               • 完美解决 GoldenNugget 图标丢失 │
+└────────────────────────────────────────────────────────────────────────┘
+```
+- **原子替换特性**：`-[STStatusBarData dataByApplyingOverlay:]` (`0x20e4ac960`) 采用 Entry 对象级别覆盖。`cellularEntry` 存在即整体指针覆写，静态下无法实现飞行模式自动隐藏与真实信号共存。
+- **VPN 状态项解耦修复**：
+  - 早期工具（如 GoldenNugget）在归档中向 `suppressedBackgroundActivityIdentifiers` 写入了 VPN 活动标识或写入了残缺 `vpnEntry`，导致控制中心和状态栏的 VPN 徽标永久消失。
+  - 修复方案：在 `_SBSystemStatusStatusBarOverridesArchiveRecord` 中将 `suppressedBackgroundActivityIdentifiers` 置为空集，并在 `STStatusBarData` 中彻底省略 `vpnEntry`。SpringBoard 在应用 Overlay 时检测到 `vpnEntry == nil` 自动执行 `cbz` 跳过，完整保留底层真实 VPN 守护进程发布的状态，使用户连接 VPN 时图标正常亮起。支持 `--vpn {auto,on,off}` 显式控制。详见 [`docs/handoffs/iOS27_Dynamic_Carrier_and_VPN_Resolution_2026-10-21.md`](handoffs/iOS27_Dynamic_Carrier_and_VPN_Resolution_2026-10-21.md)。
+
+---
+
 ## 3. iOS 27 备份与恢复安全边界变化
 
 在 iOS 27.0 Release 正式版中，Apple 针对历史定制工具（如 Nugget / CowabungaLite）实施了四重封堵：
