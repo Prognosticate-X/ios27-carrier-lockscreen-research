@@ -72,7 +72,7 @@
 
 ## 五、2026-10-19 实机验证进展（iPhone 14 Pro / iOS 27.0.1 / 24A446）
 
-> 完整交接文档（含可复现命令与回滚方式）：[`docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)
+> 完整交接文档（含可复现命令与回滚方式）：[`../04_research_handoffs/2026-10-19_commcenter-preference-injection.md`](../04_research_handoffs/2026-10-19_commcenter-preference-injection.md)
 
 ### 1. 已实测确认
 
