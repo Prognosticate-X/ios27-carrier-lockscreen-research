@@ -161,7 +161,7 @@ primary_bars=body.get("bars") if body.get("bars") is not None else 4
 2. **AFC 读通道失效**：在 24A446 上，AFC daemon 对 media 沙箱之外只有 metadata 权限；`read` 与目录 `list` 均失败，仅 `stat` 可穿过软链。因此无法用 AFC 回读偏好 plist 内容，字节级验证必须改用 MobileBackup2 备份。
 3. **静态覆写与动态注入的判定隔离**：`StatusBarOverrides.archive` 的优先级高于实时蜂窝域，必须先用 reset 归档 + 用户空间重启确认锁屏回到原生 `中国联通`，才能把“锁屏文字变化”归因于 CommCenter 偏好注入，否则会得到假阴性。
 
-已就绪的注入工具：`tools/commcenter_carrier_inject.py`（只读工具 `tools/device_path_probe.py`、视觉验证 `tools/device_ui.py`）。完整实验协议见 [`handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`](handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md)。
+已就绪的注入工具：`tools/commcenter_carrier_inject.py`（只读工具 `tools/device_path_probe.py`、视觉验证 `tools/device_ui.py`）。完整实验协议见 [`../04_research_handoffs/2026-10-19_commcenter-preference-injection.md`](../04_research_handoffs/2026-10-19_commcenter-preference-injection.md)。
 
 ### 6.1 实机结果：偏好层注入阴性
 

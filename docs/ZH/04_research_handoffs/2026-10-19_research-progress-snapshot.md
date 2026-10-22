@@ -23,7 +23,7 @@
 3. **工具与文档**
    - `tools/commcenter_carrier_inject.py`、`tools/device_path_probe.py`、`tools/device_ui.py`、`tools/commcenter_preference_builder.py`。
    - 17 项离线单测全部通过。
-   - 交接文档：`docs/handoffs/iOS27_CommCenter_Preference_Injection_2026-10-19.md`。
+   - 交接文档：`../04_research_handoffs/2026-10-19_commcenter-preference-injection.md`。
 
 ---
 

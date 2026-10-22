@@ -104,4 +104,4 @@ python3 tools/generate_statusbar_archive.py "中国广电 5G" StatusBarOverrides
 
 - “Nugget 方案是静态的”这一说法**只对 iOS 27 的现代 archive 成立**；旧版 Nugget 在未选择修改信号格时，确实可以保留真实信号与飞行模式行为（这与社区实测一致）。
 - 现代 archive 的静态化来自 `STStatusBarData` 的对象级语义，而不是“显示域覆写”这个方向本身。
-- 当前开放问题：iOS 27 是否仍存在部分覆写入口（archive 哨兵值、`recordByApplyingRecord:` 合并、或锁屏/CC 不同渲染面）。详见 `docs/handoffs/iOS27_Research_Progress_Snapshot_2026-10-19.md`。
+- 当前开放问题：iOS 27 是否仍存在部分覆写入口（archive 哨兵值、`recordByApplyingRecord:` 合并、或锁屏/CC 不同渲染面）。详见 `../04_research_handoffs/2026-10-19_research-progress-snapshot.md`。
