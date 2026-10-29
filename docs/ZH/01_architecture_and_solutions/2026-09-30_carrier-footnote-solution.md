@@ -1,5 +1,7 @@
 # iOS 27.0 锁屏 Carrier Name 与 Lock Screen Footnote 终局研究方案与技术裁决报告
 
+> ⚠️ **Superseded（2026-10-28）**：本报告中「Carrier Name 待物理验证」的结论已被 2026-10-19 / 2026-10-21 的实机实验与反汇编结论取代。请以 [2026-10-28 研究路线图](../04_research_handoffs/2026-10-28_next-research-roadmap.md) 与 [2026-10-21 终局结论](../04_research_handoffs/2026-10-21_dynamic-carrier-and-vpn-resolution.md) 为准；本文保留为历史证据链。
+
 > **目标设备**：iPhone 16 Pro Max (A18 Pro)  
 > **操作系统**：iOS 27.0 Release / Build `24A437`  
 > **验证基准**：非越狱环境、主力机零风险安全准则、源码级审计与运行时反射  

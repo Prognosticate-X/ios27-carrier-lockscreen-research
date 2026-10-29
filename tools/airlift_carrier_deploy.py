@@ -87,20 +87,41 @@ class AirLiftCarrierError(RuntimeError):
         self.details = details
 
 
+def _parse_bars_arg(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in ("", "omit", "none"):
+        return None
+    try:
+        bars = int(normalized)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid signal bars '{value}': must be 0-4 or 'omit'.") from exc
+    if not (0 <= bars <= 4):
+        raise argparse.ArgumentTypeError(f"Signal bars must be between 0 and 4 (got {bars}), or 'omit'.")
+    return bars
+
+
 def build_cellular_archive(
     primary_carrier: Optional[str] = None,
-    primary_bars: int = 4,
-    primary_type: int = 10,
+    primary_bars: Optional[int] = 4,
+    primary_type: Optional[int] = 10,
     primary_badge: Optional[str] = None,
     secondary_carrier: Optional[str] = None,
-    secondary_bars: int = 4,
-    secondary_type: int = 10,
+    secondary_bars: Optional[int] = 4,
+    secondary_type: Optional[int] = 10,
     secondary_badge: Optional[str] = None,
     is_reset: bool = False,
     partial: bool = False,
     vpn: Optional[bool] = None,
 ) -> bytes:
-    """Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard."""
+    """Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard.
+
+    Defaults to primary_bars=4 (4 full lit bars in status bar) and primary_type=10 (5G).
+    Note: Physical iPhone 14 Pro verification proved that omitting displayValue
+    (primary_bars=None) decodes as 0 via -[NSCoder decodeIntegerForKey:@"displayValue"],
+    rendering 0 lit bars (4 dimmed bars) in the top status bar.
+    """
     if primary_carrier and len(primary_carrier) > MAX_CARRIER_LENGTH:
         raise AirLiftCarrierError(f"Primary carrier name exceeds maximum length of {MAX_CARRIER_LENGTH} characters.")
     if secondary_carrier and len(secondary_carrier) > MAX_CARRIER_LENGTH:
@@ -188,12 +209,11 @@ def build_cellular_archive(
     if primary_carrier:
         uid_p_str = add_obj(primary_carrier)
         uid_p_badge = add_obj(primary_badge) if primary_badge else plistlib.UID(0)
-        p_entry = {
+        p_entry: dict[str, Any] = {
             "badgeString": uid_p_badge,
             "callForwardingEnabled": False,
             "crossfadeString": uid_p_str,
             "displayRawValue": 0,
-            "displayValue": primary_bars,
             "enabled": True,
             "isBootstrapCellular": False,
             "lowDataModeActive": False,
@@ -204,9 +224,12 @@ def build_cellular_archive(
             "status": 5,
             "string": uid_p_str,
             "suffixString": plistlib.UID(0),
-            "type": primary_type,
             "wifiCallingEnabled": False,
         }
+        if primary_bars is not None:
+            p_entry["displayValue"] = int(primary_bars)
+        if primary_type is not None:
+            p_entry["type"] = int(primary_type)
         if partial:
             p_entry.pop("displayValue", None)
             p_entry.pop("type", None)
@@ -217,12 +240,11 @@ def build_cellular_archive(
     if secondary_carrier:
         uid_s_str = add_obj(secondary_carrier)
         uid_s_badge = add_obj(secondary_badge) if secondary_badge else plistlib.UID(0)
-        s_entry = {
+        s_entry: dict[str, Any] = {
             "badgeString": uid_s_badge,
             "callForwardingEnabled": False,
             "crossfadeString": uid_s_str,
             "displayRawValue": 0,
-            "displayValue": secondary_bars,
             "enabled": True,
             "isBootstrapCellular": False,
             "lowDataModeActive": False,
@@ -233,9 +255,12 @@ def build_cellular_archive(
             "status": 5,
             "string": uid_s_str,
             "suffixString": plistlib.UID(0),
-            "type": secondary_type,
             "wifiCallingEnabled": False,
         }
+        if secondary_bars is not None:
+            s_entry["displayValue"] = int(secondary_bars)
+        if secondary_type is not None:
+            s_entry["type"] = int(secondary_type)
         if partial:
             s_entry.pop("displayValue", None)
             s_entry.pop("type", None)
@@ -375,12 +400,36 @@ def operation_ok(result: dict[str, Any]) -> bool:
     )
 
 
-_ENV_BLOCKLIST = [
-    udid.strip()
-    for udid in os.environ.get("AIRLIFT_BLOCKED_UDIDS", "").split(",")
-    if udid.strip()
-]
-PRIMARY_PHONE_BLOCKLIST = frozenset(_ENV_BLOCKLIST)
+SAFETY_CONFIG_PATH = Path(__file__).resolve().parent.parent / "safety.json"
+
+
+def _load_primary_blocklist() -> frozenset[str]:
+    """Load blocked device UDIDs from the local safety file and the environment.
+
+    Failing closed is deliberate: a write-capable tool must not silently fall
+    back to "no blocked devices" when the local safety configuration is absent.
+    """
+    blocked: set[str] = set()
+    try:
+        raw = json.loads(SAFETY_CONFIG_PATH.read_text(encoding="utf-8"))
+        values = raw.get("blocked_udids", []) if isinstance(raw, dict) else []
+        if isinstance(values, list):
+            blocked.update(str(value).strip() for value in values if str(value).strip())
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, TypeError):
+        # A malformed safety file must not silently disable protection; the
+        # select_device() guard below refuses all writes while the set is empty.
+        blocked.clear()
+    blocked.update(
+        udid.strip()
+        for udid in os.environ.get("AIRLIFT_BLOCKED_UDIDS", "").split(",")
+        if udid.strip()
+    )
+    return frozenset(blocked)
+
+
+PRIMARY_PHONE_BLOCKLIST = _load_primary_blocklist()
 
 
 def query_connected_devices() -> list[dict[str, Any]]:
@@ -434,6 +483,10 @@ def query_connected_devices() -> list[dict[str, Any]]:
                 "iPhone16,1", "iPhone16,2",  # 15 Pro / 15 Pro Max
                 "iPhone17,1", "iPhone17,2",  # 16 Pro / 16 Pro Max
                 "iPhone17,3", "iPhone17,4",  # 16 / 16 Plus
+                "iPhone18,1", "iPhone18,2",  # 17 Pro / 17 Pro Max
+                "iPhone18,3", "iPhone18,4",  # 17 / 17 Plus
+                "iPhone19,1", "iPhone19,2",  # 18 Pro / 18 Pro Max
+                "iPhone19,3", "iPhone19,4",  # 18 / 18 Plus
             )
             matches.append({
                 "name": name,
@@ -449,13 +502,40 @@ def query_connected_devices() -> list[dict[str, Any]]:
     return matches
 
 
+def ensure_write_allowed(udid: str) -> None:
+    """Defense in depth for callers that bypass select_device()."""
+    if not PRIMARY_PHONE_BLOCKLIST:
+        raise AirLiftCarrierError(
+            "REFUSED: No blocked device UDIDs are configured. "
+            "Create safety.json with {\"blocked_udids\": [\"...\"]} or set "
+            "AIRLIFT_BLOCKED_UDIDS before any write operation."
+        )
+    blocked = {value.casefold() for value in PRIMARY_PHONE_BLOCKLIST}
+    if udid.casefold() in blocked:
+        raise AirLiftCarrierError(
+            f"REFUSED: Device '{udid}' is user's primary device and is protected by safety blocklist."
+        )
+
+
 def select_device(requested_udid: Optional[str]) -> dict[str, Any]:
-    if requested_udid and requested_udid in PRIMARY_PHONE_BLOCKLIST:
+    if not PRIMARY_PHONE_BLOCKLIST:
+        raise AirLiftCarrierError(
+            "REFUSED: No blocked device UDIDs are configured. "
+            "Create safety.json with {\"blocked_udids\": [\"...\"]} or set "
+            "AIRLIFT_BLOCKED_UDIDS before any write operation."
+        )
+
+    blocked = {value.casefold() for value in PRIMARY_PHONE_BLOCKLIST}
+    if requested_udid and requested_udid.casefold() in blocked:
         raise AirLiftCarrierError(
             f"REFUSED: Device '{requested_udid}' is user's primary device and is protected by safety blocklist."
         )
 
-    devices = query_connected_devices()
+    devices = [
+        device
+        for device in query_connected_devices()
+        if device["udid"].casefold() not in blocked
+    ]
     if not devices:
         raise AirLiftCarrierError(
             "No compatible physical iPhone test device detected via devicectl.\n"
@@ -559,6 +639,7 @@ def deploy_carrier(
     *,
     verbose: bool = False,
 ) -> dict[str, Any]:
+    ensure_write_allowed(udid)
     target = DEFAULT_TARGET
     leaf = TARGET_LEAF
 
@@ -1015,14 +1096,14 @@ def main() -> int:
         description="AirLift Carrier Deployer for iOS 27 (Physical Devices)"
     )
     parser.add_argument("-c", "--carrier", help="Primary Carrier Name (e.g. '中国移动 5G')")
-    parser.add_argument("-b", "--bars", type=int, default=4, choices=range(0, 5), help="Primary Signal Bars (0-4, default: 4)")
+    parser.add_argument("-b", "--bars", type=_parse_bars_arg, default=4, help="Primary Signal Bars (0-4, default: 4; or 'omit' to omit displayValue)")
     parser.add_argument("-t", "--type", default="5g", choices=NETWORK_TYPES.keys(), help="Primary Network Type (default: 5g)")
     parser.add_argument("--badge", help="Primary SIM Badge (e.g. 'P', '主卡')")
     parser.add_argument("-s", "--secondary-carrier", help="Secondary Carrier Name for Dual SIM")
-    parser.add_argument("--secondary-bars", type=int, default=4, choices=range(0, 5), help="Secondary Signal Bars (default: 4)")
+    parser.add_argument("--secondary-bars", type=_parse_bars_arg, default=4, help="Secondary Signal Bars (0-4, default: 4; or 'omit' to omit displayValue)")
     parser.add_argument("--secondary-type", default="5g", choices=NETWORK_TYPES.keys(), help="Secondary Network Type (default: 5g)")
-    parser.add_argument("--secondary-badge", help="Secondary SIM Badge (e.g. 'S', '副卡')")
-    parser.add_argument("--partial", action="store_true", help="Partial override: keep live signal bars and hide the network-type label (omit displayValue/type)")
+    parser.add_argument("--secondary-badge", help="Secondary SIM Badge (e.g. 'S', '2', '副卡')")
+    parser.add_argument("--partial", action="store_true", help="Partial override: omit both displayValue and type")
     parser.add_argument("--vpn", choices=["auto", "on", "off"], default="auto", help="VPN indicator behavior: 'auto' (default, native live passthrough, unsuppressed), 'on' (force show VPN icon), 'off' (force hide VPN icon)")
     parser.add_argument("--reset", action="store_true", help="Reset/Clear overrides to restore native carrier")
 

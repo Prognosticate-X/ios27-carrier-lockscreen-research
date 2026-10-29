@@ -7,3 +7,5 @@ build/
 *.tmp
 .artifacts/
 .venv/
+.tools/
+safety.json

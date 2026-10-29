@@ -1,5 +1,7 @@
 # iOS 27 定制可行路线与方案评估
 
+> ⚠️ **Partially superseded（2026-10-28）**：Route 3（SystemStatusUI）与 Route 5（StatusBarOverrides）已在后续轮次中完成分析与交付。最新状态见 [2026-10-28 研究路线图](../04_research_handoffs/2026-10-28_next-research-roadmap.md)。
+
 ## 1. 目标 A：Lock Screen Footnote（可行性极高）
 
 ### 1.1 技术机制

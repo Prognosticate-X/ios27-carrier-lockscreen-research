@@ -1,5 +1,7 @@
 # iOS 27 System Customization Overall Architecture and Safety Boundaries Overview
 
+> ⚠️ **Partially superseded (2026-10-28)**: The AirLift delivery description predates the later physical verification and overwrite-limit findings. See the [2026-10-28 roadmap](../04_research_handoffs/2026-10-28_next-research-roadmap.md) and the [2026-10-21 final verdict](../04_research_handoffs/2026-10-21_dynamic-carrier-and-vpn-resolution.md).
+
 ## 1. System Customization Panoramic Architecture
 
 ```text

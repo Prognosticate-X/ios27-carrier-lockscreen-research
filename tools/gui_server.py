@@ -451,16 +451,18 @@ HTML_PAGE = f"""<!DOCTYPE html>
           <option value="lte">LTE</option>
           <option value="4g">4G</option>
           <option value="3g">3G</option>
+          <option value="none">不显示 (None)</option>
         </select>
       </div>
-      <div style="width: 120px;">
+      <div style="width: 135px;">
         <label><span id="t_primaryBarsLabel">信号格数</span><span class="optional-tag" id="t_opt3">(可选)</span></label>
         <select id="primaryBars">
-          <option value="4" id="t_barsDefault1">4 格 (默认静态)</option>
+          <option value="4" id="t_bars4_1">4 格 (默认满格)</option>
           <option value="3" id="t_bars3_1">3 格</option>
           <option value="2" id="t_bars2_1">2 格</option>
           <option value="1" id="t_bars1_1">1 格</option>
           <option value="0" id="t_bars0_1">0 格</option>
+          <option value="" id="t_barsDefault1">省略 displayValue (实测0格)</option>
         </select>
       </div>
     </div>
@@ -468,9 +470,9 @@ HTML_PAGE = f"""<!DOCTYPE html>
     <div class="row" style="align-items: center; gap: 10px; margin-top: 2px;">
       <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
         <input type="checkbox" id="partialMode" style="width: 16px; height: 16px;">
-        <span id="t_partialLabel">保留实时信号格（部分覆写）</span>
+        <span id="t_partialLabel">部分覆写模式（省略 displayValue 与 type）</span>
       </label>
-      <span class="hint-text" id="t_partialHint">不写 displayValue/type；信号格回退实时、制式文字被抑制；名称仍可能飞行模式常驻</span>
+      <span class="hint-text" id="t_partialHint">实机验证表明省略 displayValue 会解码为 0（顶部状态栏显示 0 格灰条），日常使用建议保持默认 4 格</span>
     </div>
 
     <div class="row" style="align-items: center; gap: 10px; margin-top: 4px;">
@@ -506,16 +508,18 @@ HTML_PAGE = f"""<!DOCTYPE html>
           <option value="lte">LTE</option>
           <option value="4g">4G</option>
           <option value="3g">3G</option>
+          <option value="none">不显示 (None)</option>
         </select>
       </div>
-      <div style="width: 120px;">
+      <div style="width: 135px;">
         <label><span id="t_secBarsLabel">副卡信号</span><span class="optional-tag" id="t_opt6">(可选)</span></label>
         <select id="secBars">
-          <option value="4" id="t_barsDefault2">4 格 (默认静态)</option>
+          <option value="4" id="t_bars4_2">4 格 (默认满格)</option>
           <option value="3" id="t_bars3_2">3 格</option>
           <option value="2" id="t_bars2_2">2 格</option>
           <option value="1" id="t_bars1_2">1 格</option>
           <option value="0" id="t_bars0_2">0 格</option>
+          <option value="" id="t_barsDefault2">省略 displayValue (实测0格)</option>
         </select>
       </div>
     </div>
@@ -638,8 +642,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryBadgePh: "如: P, 1",
       primaryTypeLabel: "网络制式",
       primaryBarsLabel: "信号格数",
-      partialLabel: "保留实时信号格（部分覆写）",
-      partialHint: "不写 displayValue/type；信号格与制式回退实时，名称仍可能飞行模式常驻",
+      partialLabel: "部分覆写模式（省略 displayValue 与 type）",
+      partialHint: "实机验证表明省略 displayValue 会解码为 0（顶部状态栏显示 0 格灰条），日常使用建议保持默认 4 格",
       vpnModeLabel: "VPN 徽标状态",
       optVpn: "(状态栏/控制中心)",
       vpnAuto: "自动 (原生透传，修复GN丢失)",
@@ -657,8 +661,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       footnotePh: "Home 条正上方个性签名 (可选，例如:  Steve Jobs)",
       btnExport: "导出 .mobileconfig",
       opt: "(可选)",
-      barsDefault: "默认 (不变)",
-      bars4: "4 格 (满格)",
+      barsDefault: "省略 displayValue (实测0格)",
+      bars4: "4 格 (默认满格)",
       bars3: "3 格",
       bars2: "2 格",
       bars1: "1 格",
@@ -718,8 +722,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       primaryBadgePh: "e.g., P, 1",
       primaryTypeLabel: "Network Type",
       primaryBarsLabel: "Signal Bars",
-      partialLabel: "Live signal bars (partial override)",
-      partialHint: "Omit displayValue/type: bars fall back to live data and the network-type label is suppressed; the name may still persist in Airplane Mode",
+      partialLabel: "Partial override (omit displayValue & type)",
+      partialHint: "Hardware tests show omitting displayValue decodes as 0 (dimmed bars in status bar); 4 Bars is recommended",
       vpnModeLabel: "VPN Badge State",
       optVpn: "(Status Bar / CC)",
       vpnAuto: "Auto (Live passthrough, fixes GN loss)",
@@ -737,8 +741,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
       footnotePh: "Signature above Home Bar (Optional, e.g.,  Steve Jobs)",
       btnExport: "Export .mobileconfig",
       opt: "(Optional)",
-      barsDefault: "Default (Unchanged)",
-      bars4: "4 Bars (Full)",
+      barsDefault: "Omit displayValue (0 Bars)",
+      bars4: "4 Bars (Default Full)",
       bars3: "3 Bars",
       bars2: "2 Bars",
       bars1: "1 Bar",
@@ -862,6 +866,8 @@ HTML_PAGE = f"""<!DOCTYPE html>
     document.getElementById('t_bars2_2').innerText = dict.bars2;
     document.getElementById('t_bars1_1').innerText = dict.bars1;
     document.getElementById('t_bars1_2').innerText = dict.bars1;
+    document.getElementById('t_bars0_1').innerText = dict.bars0;
+    document.getElementById('t_bars0_2').innerText = dict.bars0;
 
     document.getElementById('t_btnDeploy').innerText = dict.btnDeploy;
     document.getElementById('t_descDeploy').innerHTML = dict.descDeploy;
@@ -961,16 +967,19 @@ HTML_PAGE = f"""<!DOCTYPE html>
       return;
     }}
 
+    const pBarsRaw = document.getElementById('primaryBars').value;
+    const sBarsRaw = document.getElementById('secBars').value;
+
     const payload = {{
       carrier: document.getElementById('primaryCarrier').value.trim() || null,
       badge: document.getElementById('primaryBadge').value.trim() || null,
-      bars: document.getElementById('primaryBars').value ? parseInt(document.getElementById('primaryBars').value) : null,
+      bars: pBarsRaw !== '' ? parseInt(pBarsRaw, 10) : null,
       type: document.getElementById('primaryType').value || '5g',
       partial: document.getElementById('partialMode').checked,
       vpn: document.getElementById('vpnMode').value,
       secondary_carrier: document.getElementById('secCarrier').value.trim() || null,
       secondary_badge: document.getElementById('secBadge').value.trim() || null,
-      secondary_bars: document.getElementById('secBars').value ? parseInt(document.getElementById('secBars').value) : null,
+      secondary_bars: sBarsRaw !== '' ? parseInt(sBarsRaw, 10) : null,
       secondary_type: document.getElementById('secType').value || '5g',
       force_overwrite: forceOverwrite,
     }};
@@ -1205,11 +1214,11 @@ def execute_deploy_worker(body: dict):
 
         payload = build_cellular_archive(
             primary_carrier=body.get("carrier"),
-            primary_bars=body.get("bars") if body.get("bars") is not None else 4,
+            primary_bars=body.get("bars"),
             primary_type=primary_type,
             primary_badge=body.get("badge"),
             secondary_carrier=body.get("secondary_carrier"),
-            secondary_bars=body.get("secondary_bars") if body.get("secondary_bars") is not None else 4,
+            secondary_bars=body.get("secondary_bars"),
             secondary_type=secondary_type,
             secondary_badge=body.get("secondary_badge"),
             is_reset=is_reset,

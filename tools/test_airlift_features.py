@@ -63,6 +63,43 @@ class TestAirliftFeatures(unittest.TestCase):
         self.assertEqual(gui_server.NETWORK_TYPES["5g"], 10)
         self.assertEqual(gui_server.NETWORK_TYPES["lte"], 9)
 
+    def test_default_bars_4_and_optional_omit_display_value(self):
+        """Default (primary_bars=4) must write displayValue=4 + type=10; primary_bars=None omits displayValue."""
+        import plistlib
+        from airlift_carrier_deploy import build_cellular_archive as deploy_build, _parse_bars_arg as deploy_parse_bars
+        from generate_statusbar_archive import build_cellular_archive as gen_build, _parse_bars_arg as gen_parse_bars
+
+        for parse_fn in (deploy_parse_bars, gen_parse_bars):
+            self.assertIsNone(parse_fn(None))
+            self.assertIsNone(parse_fn("omit"))
+            self.assertIsNone(parse_fn("none"))
+            self.assertEqual(parse_fn("4"), 4)
+            self.assertEqual(parse_fn("0"), 0)
+
+        for builder in (deploy_build, gen_build):
+            # Default: primary_bars=4, primary_type=10
+            payload_default = builder(primary_carrier="Default4Bars", primary_type=10)
+            plist_d = plistlib.loads(payload_default)
+            objects_d = plist_d["$objects"]
+
+            def resolve_d(value):
+                return objects_d[value.data] if isinstance(value, plistlib.UID) else value
+
+            record_d = resolve_d(plist_d["$top"]["root"])
+            data_d = resolve_d(record_d["statusBarData"])
+            entry_d = resolve_d(data_d["cellularEntry"])
+            self.assertEqual(entry_d["displayValue"], 4)
+            self.assertEqual(entry_d["type"], 10)
+            self.assertEqual(resolve_d(entry_d["string"]), "Default4Bars")
+
+            # Optional omit (primary_bars=None): omits displayValue while keeping type=10
+            payload_omit = builder(primary_carrier="OmitBars5G", primary_bars=None, primary_type=10)
+            plist_o = plistlib.loads(payload_omit)
+            objects_o = plist_o["$objects"]
+            entry_o = objects_o[objects_o[objects_o[plist_o["$top"]["root"].data]["statusBarData"].data]["cellularEntry"].data]
+            self.assertNotIn("displayValue", entry_o)
+            self.assertEqual(entry_o["type"], 10)
+
     def test_partial_archive_keeps_live_fields(self):
         """Partial mode must drop displayValue/type while keeping name + registration."""
         import plistlib
@@ -332,6 +369,48 @@ class TestCommCenterPreferenceInjection(unittest.TestCase):
 
         with self.assertRaises(AirLiftCarrierError):
             deploy_preference("udid-unused", "com.apple.springboard.plist", b"x")
+
+
+class TestPrimaryDeviceSafety(unittest.TestCase):
+    """The write path must fail closed and honour the local blocklist."""
+
+    def test_empty_blocklist_refuses_all_devices(self):
+        import airlift_carrier_deploy as deploy
+
+        original = deploy.PRIMARY_PHONE_BLOCKLIST
+        deploy.PRIMARY_PHONE_BLOCKLIST = frozenset()
+        try:
+            with self.assertRaises(deploy.AirLiftCarrierError):
+                deploy.select_device(None)
+        finally:
+            deploy.PRIMARY_PHONE_BLOCKLIST = original
+
+    def test_blocked_udid_is_rejected_before_device_query(self):
+        import airlift_carrier_deploy as deploy
+
+        original = deploy.PRIMARY_PHONE_BLOCKLIST
+        deploy.PRIMARY_PHONE_BLOCKLIST = frozenset({"BLOCKED-UDID"})
+        try:
+            with self.assertRaises(deploy.AirLiftCarrierError):
+                deploy.select_device("blocked-udid")
+        finally:
+            deploy.PRIMARY_PHONE_BLOCKLIST = original
+
+    def test_direct_write_guard_blocks_primary_and_empty_config(self):
+        import airlift_carrier_deploy as deploy
+
+        original = deploy.PRIMARY_PHONE_BLOCKLIST
+        try:
+            deploy.PRIMARY_PHONE_BLOCKLIST = frozenset()
+            with self.assertRaises(deploy.AirLiftCarrierError):
+                deploy.ensure_write_allowed("ANY-UDID")
+
+            deploy.PRIMARY_PHONE_BLOCKLIST = frozenset({"BLOCKED-UDID"})
+            with self.assertRaises(deploy.AirLiftCarrierError):
+                deploy.ensure_write_allowed("blocked-udid")
+            deploy.ensure_write_allowed("ALLOWED-UDID")
+        finally:
+            deploy.PRIMARY_PHONE_BLOCKLIST = original
 
 
 class TestDevicePathProbe(unittest.TestCase):

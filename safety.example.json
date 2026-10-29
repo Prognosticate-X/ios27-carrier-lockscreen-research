@@ -1,0 +1,6 @@
+{
+  "blocked_udids": [
+    "00000000-0000000000000000"
+  ],
+  "notes": "Copy this file to safety.json and replace the placeholder with your primary iPhone UDID(s). safety.json is gitignored. When no blocked UDIDs are configured, the deployer refuses all writes."
+}
