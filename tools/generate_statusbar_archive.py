@@ -30,14 +30,29 @@ NETWORK_TYPES = {
 MAX_CARRIER_LENGTH = 64
 MAX_BADGE_LENGTH = 8
 
+def _parse_bars_arg(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower()
+    if normalized in ("", "omit", "none"):
+        return None
+    try:
+        bars = int(normalized)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"Invalid signal bars '{value}': must be 0-4 or 'omit'.") from exc
+    if not (0 <= bars <= 4):
+        raise argparse.ArgumentTypeError(f"Signal bars must be between 0 and 4 (got {bars}), or 'omit'.")
+    return bars
+
+
 def build_cellular_archive(
     primary_carrier: Optional[str] = None,
-    primary_bars: int = 4,
-    primary_type: int = 10,
+    primary_bars: Optional[int] = 4,
+    primary_type: Optional[int] = 10,
     primary_badge: Optional[str] = None,
     secondary_carrier: Optional[str] = None,
-    secondary_bars: int = 4,
-    secondary_type: int = 10,
+    secondary_bars: Optional[int] = 4,
+    secondary_type: Optional[int] = 10,
     secondary_badge: Optional[str] = None,
     is_reset: bool = False,
     partial: bool = False,
@@ -45,6 +60,10 @@ def build_cellular_archive(
 ) -> bytes:
     """
     Constructs an NSKeyedArchiver bplist compliant with iOS 27 SpringBoard.
+    Defaults to primary_bars=4 (4 full lit bars in status bar) and primary_type=10 (5G).
+    Note: Physical iPhone 14 Pro verification proved that omitting displayValue
+    (primary_bars=None) decodes as 0 via -[NSCoder decodeIntegerForKey:@"displayValue"],
+    rendering 0 lit bars (4 dimmed bars) in the top status bar.
     """
     if primary_carrier and len(primary_carrier) > MAX_CARRIER_LENGTH:
         raise ValueError(f"Primary carrier name exceeds maximum length of {MAX_CARRIER_LENGTH} characters.")
@@ -138,12 +157,11 @@ def build_cellular_archive(
     if primary_carrier:
         uid_p_str = add_obj(primary_carrier)
         uid_p_badge = add_obj(primary_badge) if primary_badge else plistlib.UID(0)
-        p_entry = {
+        p_entry: Dict[str, Any] = {
             "badgeString": uid_p_badge,
             "callForwardingEnabled": False,
             "crossfadeString": uid_p_str,
             "displayRawValue": 0,
-            "displayValue": primary_bars,
             "enabled": True,
             "isBootstrapCellular": False,
             "lowDataModeActive": False,
@@ -154,9 +172,12 @@ def build_cellular_archive(
             "status": 5,
             "string": uid_p_str,
             "suffixString": plistlib.UID(0),
-            "type": primary_type,
             "wifiCallingEnabled": False,
         }
+        if primary_bars is not None:
+            p_entry["displayValue"] = int(primary_bars)
+        if primary_type is not None:
+            p_entry["type"] = int(primary_type)
         if partial:
             p_entry.pop("displayValue", None)
             p_entry.pop("type", None)
@@ -167,12 +188,11 @@ def build_cellular_archive(
     if secondary_carrier:
         uid_s_str = add_obj(secondary_carrier)
         uid_s_badge = add_obj(secondary_badge) if secondary_badge else plistlib.UID(0)
-        s_entry = {
+        s_entry: Dict[str, Any] = {
             "badgeString": uid_s_badge,
             "callForwardingEnabled": False,
             "crossfadeString": uid_s_str,
             "displayRawValue": 0,
-            "displayValue": secondary_bars,
             "enabled": True,
             "isBootstrapCellular": False,
             "lowDataModeActive": False,
@@ -183,9 +203,12 @@ def build_cellular_archive(
             "status": 5,
             "string": uid_s_str,
             "suffixString": plistlib.UID(0),
-            "type": secondary_type,
             "wifiCallingEnabled": False,
         }
+        if secondary_bars is not None:
+            s_entry["displayValue"] = int(secondary_bars)
+        if secondary_type is not None:
+            s_entry["type"] = int(secondary_type)
         if partial:
             s_entry.pop("displayValue", None)
             s_entry.pop("type", None)
@@ -262,15 +285,15 @@ def main():
         description="iOS 27 StatusBarOverrides.archive Generator & Tool"
     )
     parser.add_argument("-c", "--carrier", help="Primary Carrier name string")
-    parser.add_argument("-b", "--bars", type=int, default=4, help="Primary Signal bars (0-4)")
-    parser.add_argument("-t", "--type", default="5g", choices=list(NETWORK_TYPES.keys()), help="Primary Network type")
+    parser.add_argument("-b", "--bars", type=_parse_bars_arg, default=4, help="Primary Signal bars (0-4, default: 4; or 'omit' to omit displayValue)")
+    parser.add_argument("-t", "--type", default="5g", choices=list(NETWORK_TYPES.keys()), help="Primary Network type (default: 5g)")
     parser.add_argument("--badge", help="Primary SIM badge (e.g. 'P', '1', '主卡')")
     parser.add_argument("-s", "--secondary-carrier", help="Secondary Carrier name string (Dual SIM)")
-    parser.add_argument("--secondary-bars", type=int, default=4, help="Secondary Signal bars (0-4)")
-    parser.add_argument("--secondary-type", default="5g", choices=list(NETWORK_TYPES.keys()), help="Secondary Network type")
+    parser.add_argument("--secondary-bars", type=_parse_bars_arg, default=4, help="Secondary Signal bars (0-4, default: 4; or 'omit' to omit displayValue)")
+    parser.add_argument("--secondary-type", default="5g", choices=list(NETWORK_TYPES.keys()), help="Secondary Network type (default: 5g)")
     parser.add_argument("--secondary-badge", help="Secondary SIM badge (e.g. 'S', '2', '副卡')")
     parser.add_argument("--reset", action="store_true", help="Generate an empty reset archive to restore system default")
-    parser.add_argument("--partial", action="store_true", help="Partial override: keep live signal bars and hide the network-type label (omit displayValue/type)")
+    parser.add_argument("--partial", action="store_true", help="Partial override: omit both displayValue and type")
     parser.add_argument("--vpn", choices=["auto", "on", "off"], default="auto", help="VPN indicator mode: 'auto' (default, native live passthrough, unsuppressed), 'on' (force show VPN icon), 'off' (force hide VPN icon)")
     parser.add_argument("-i", "--inspect", help="Inspect an existing archive file")
     parser.add_argument("-o", "--output", default="StatusBarOverrides.archive", help="Output archive path")

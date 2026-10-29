@@ -1,5 +1,7 @@
 # iOS 27 系统定制整体架构与安全边界全景图
 
+> ⚠️ **Partially superseded（2026-10-28）**：本文对 AirLift 交付的描述早于后续实机验证与覆盖写限制的发现。最新状态见 [2026-10-28 研究路线图](../04_research_handoffs/2026-10-28_next-research-roadmap.md) 与 [2026-10-21 终局结论](../04_research_handoffs/2026-10-21_dynamic-carrier-and-vpn-resolution.md)。
+
 ## 1. 系统定制全景架构
 
 ```text

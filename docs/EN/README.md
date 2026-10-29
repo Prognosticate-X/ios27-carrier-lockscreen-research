@@ -4,6 +4,8 @@ This directory houses the comprehensive reverse engineering, empirical verificat
 
 [中文文档目录 (Chinese Documentation Index)](../ZH/README.md)
 
+> **Latest state (2026-10-28)**: current conclusions, open questions, and next-phase research tracks are maintained in the [2026-10-28 Research Roadmap](04_research_handoffs/2026-10-28_next-research-roadmap.md). Historical documents remain as the evidence chain; some are marked Superseded.
+
 ---
 
 ## 📑 Documentation Categories & Index
@@ -27,6 +29,7 @@ This directory houses the comprehensive reverse engineering, empirical verificat
 | 2026-09-28 | [`2026-09-28_speakeasy-analysis.md`](02_reverse_engineering/2026-09-28_speakeasy-analysis.md) | **Speakeasy Gate & FeatureFlags Analysis**: Deep dive into iOS 27's new status bar gating and write protections. |
 | 2026-09-28 | [`2026-09-28_systemstatusui-analysis.md`](02_reverse_engineering/2026-09-28_systemstatusui-analysis.md) | **SystemStatusUI Modern Status Bar Architecture**: Pub/sub domain models, STStatusBarData, and entry structures. |
 | 2026-10-14 | [`2026-10-14_commcenter-reverse-engineering.md`](02_reverse_engineering/2026-10-14_commcenter-reverse-engineering.md) | **CommCenter Dynamic Carrier Disassembly**: Reverse engineering `InterCarrierRoamingDisplayNames` and preference mapping. |
+| **2026-10-29** | [`2026-10-29_rea-alternative-paths-analysis.md`](02_reverse_engineering/2026-10-29_rea-alternative-paths-analysis.md) | **REA + Ghidra Non-StatusBarOverrides Path Analysis**: Decompilation of `SystemStatusServer` (299 functions) & `SystemStatusUI` (84 functions) with iPhone 14 Pro hardware verification. |
 
 ---
 
@@ -37,6 +40,7 @@ This directory houses the comprehensive reverse engineering, empirical verificat
 | 2026-09-28 | [`2026-09-28_golden-nugget-diff.md`](03_hardware_and_verification/2026-09-28_golden-nugget-diff.md) | **GoldenNugget Fork Topology & Authenticity Audit**: Clarifying the truth behind community claims of "patched on iOS 27". |
 | 2026-10-19 | [`2026-10-19_empirical-verification.md`](03_hardware_and_verification/2026-10-19_empirical-verification.md) | **Empirical Verification & Archive Breakthrough**: CoreSimulator hot-reload and physical hardware end-to-end confirmation. |
 | 2026-10-19 | [`2026-10-19_dynamic-island-analysis.md`](03_hardware_and_verification/2026-10-19_dynamic-island-analysis.md) | **Dynamic Island Cellular Rendering Heuristics**: Single-SIM full-height 4-bars and Dual-SIM stacked indicator analysis on iPhone 14 Pro. |
+| **2026-10-29** | [`2026-10-29_displayvalue-omission-hardware-verification.md`](03_hardware_and_verification/2026-10-29_displayvalue-omission-hardware-verification.md) | **iPhone 14 Pro Hardware Verification (`displayValue` Omission vs. `displayValue=4`)**: Empirically falsifies GoldenNugget `0fe4d303`'s claim—omitting `displayValue` decodes as `0` grey bars in the top status bar while Control Center's green cellular toggle always displays live signal bars. |
 
 ---
 
@@ -51,3 +55,6 @@ This directory houses the comprehensive reverse engineering, empirical verificat
 | 2026-10-19 | [`2026-10-19_research-progress-snapshot.md`](04_research_handoffs/2026-10-19_research-progress-snapshot.md) | **Display Domain Progress Snapshot**: Lock Screen vs Control Center rendering divergence and partial override probes. |
 | 2026-10-19 | [`2026-10-19_commcenter-preference-injection.md`](04_research_handoffs/2026-10-19_commcenter-preference-injection.md) | **CommCenter Preference Injection Handoff**: 12-domain preference test results and HomeDomain vs WirelessDomain isolation. |
 | 2026-10-21 | [`2026-10-21_dynamic-carrier-and-vpn-resolution.md`](04_research_handoffs/2026-10-21_dynamic-carrier-and-vpn-resolution.md) | **Dynamic Carrier Verdict & VPN Badge Resolution**: Mathematical proof of `cellularEntry` atomic replacement and VPN fix. |
+| **2026-10-28** | [`2026-10-28_next-research-roadmap.md`](04_research_handoffs/2026-10-28_next-research-roadmap.md) | **Latest-State Audit & Next-Phase Roadmap**: safety/harness audit, time-boxed Airplane-Mode falsification, general entry override engine, compatibility and delivery hardening. |
+| **2026-10-28** | [`2026-10-28_airplane-mode-status-matrix.md`](04_research_handoffs/2026-10-28_airplane-mode-status-matrix.md) | **Airplane-Mode Coupling Matrix**: REA + Ghidra name-gate decompilation; `status` 0–5/255 physical matrix; `status=1` live-fallback; no usable Airplane-Mode coupling combination found. |
+| **2026-10-28** | [`2026-10-28_name-only-live-override.md`](04_research_handoffs/2026-10-28_name-only-live-override.md) | **Nugget-Style Name-Only / Everything-Else-Live Research**: runtime enumeration shows no field-level flags; WirelessDomain backup injection empirically falsified and triggers Setup Assistant. |

@@ -34,6 +34,7 @@ from airlift_carrier_deploy import (  # noqa: E402
     build_books_plist,
     build_streaming_zip,
     collect_books_snapshot,
+    ensure_write_allowed,
     native,
     operation_ok,
     respring_device,
@@ -49,6 +50,7 @@ TARGET_LEAF = "StatusBarOverrides.archive"
 
 
 def replace_archive(udid: str, payload: bytes, *, save_old: Path | None = None) -> dict:
+    ensure_write_allowed(udid)
     token = secrets.token_hex(10)
     source = f"airlift-src-{token}"
     link = f"airlift-link-{token}"

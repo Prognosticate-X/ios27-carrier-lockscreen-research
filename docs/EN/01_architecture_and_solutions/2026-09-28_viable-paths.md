@@ -1,5 +1,7 @@
 # iOS 27 Viable Paths & Feasibility Evaluation
 
+> ⚠️ **Partially superseded (2026-10-28)**: Route 3 (SystemStatusUI) and Route 5 (StatusBarOverrides) have since been analyzed and delivered. See the [2026-10-28 roadmap](../04_research_handoffs/2026-10-28_next-research-roadmap.md).
+
 ## 1. Target A: Lock Screen Footnote (Extremely High Feasibility)
 
 ### 1.1 Technical Mechanism

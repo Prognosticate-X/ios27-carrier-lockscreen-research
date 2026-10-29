@@ -1,5 +1,7 @@
 # iOS 27.0 Lock Screen Carrier Name & Lock Screen Footnote Definitive Research Solution & Technical Verdict Report
 
+> ⚠️ **Superseded (2026-10-28)**: The carrier-name verdict in this report (“Pending Physical Verification”) was superseded by the 2026-10-19 / 2026-10-21 physical experiments and disassembly. Use the [2026-10-28 roadmap](../04_research_handoffs/2026-10-28_next-research-roadmap.md) and the [2026-10-21 final verdict](../04_research_handoffs/2026-10-21_dynamic-carrier-and-vpn-resolution.md) instead; this document is retained as the historical evidence chain.
+
 > **Target Device**: iPhone 16 Pro Max (A18 Pro)  
 > **Operating System**: iOS 27.0 Release / Build `24A437`  
 > **Verification Baseline**: Non-jailbroken environment, primary device zero-risk safety guidelines, source-level audit, and runtime reflection  
