@@ -30,6 +30,7 @@
 | 2026-09-28 | [`2026-09-28_systemstatusui-analysis.md`](02_reverse_engineering/2026-09-28_systemstatusui-analysis.md) | **SystemStatusUI 现代状态栏发布/订阅模型逆向**：分析 STStatusBarData 与发布者架构。 |
 | 2026-10-14 | [`2026-10-14_commcenter-reverse-engineering.md`](02_reverse_engineering/2026-10-14_commcenter-reverse-engineering.md) | **CommCenter 动态运营商 ARM64e 深度反汇编**：定位 `InterCarrierRoamingDisplayNames` 核心函数与偏好层。 |
 | **2026-10-29** | [`2026-10-29_rea-alternative-paths-analysis.md`](02_reverse_engineering/2026-10-29_rea-alternative-paths-analysis.md) | **REA + Ghidra 非 StatusBarOverrides 路径全量逆向报告**：反编译 `SystemStatusServer` (299 函数) 与 `SystemStatusUI` (84 函数)，结合 14 Pro 真机取证完成全路径裁决。 |
+| **2026-11-03** | [`2026-11-03_milestone2_dynamic-signal-passthrough.md`](02_reverse_engineering/2026-11-03_milestone2_dynamic-signal-passthrough.md) | **Milestone 2：蜂窝状态数据流全链路逆向报告与动态信号穿透分析**：完整梳理 Baseband ⇄ CommCenter ⇄ systemstatusd ⇄ SpringBoard 数据流图谱；汇编级证明 downstream overlay 为什么整块替换；对 MDM、WirelessDomain、CarrierBundle 等旁路完成系统性证伪。 |
 
 ---
 

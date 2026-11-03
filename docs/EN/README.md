@@ -30,6 +30,7 @@ This directory houses the comprehensive reverse engineering, empirical verificat
 | 2026-09-28 | [`2026-09-28_systemstatusui-analysis.md`](02_reverse_engineering/2026-09-28_systemstatusui-analysis.md) | **SystemStatusUI Modern Status Bar Architecture**: Pub/sub domain models, STStatusBarData, and entry structures. |
 | 2026-10-14 | [`2026-10-14_commcenter-reverse-engineering.md`](02_reverse_engineering/2026-10-14_commcenter-reverse-engineering.md) | **CommCenter Dynamic Carrier Disassembly**: Reverse engineering `InterCarrierRoamingDisplayNames` and preference mapping. |
 | **2026-10-29** | [`2026-10-29_rea-alternative-paths-analysis.md`](02_reverse_engineering/2026-10-29_rea-alternative-paths-analysis.md) | **REA + Ghidra Non-StatusBarOverrides Path Analysis**: Decompilation of `SystemStatusServer` (299 functions) & `SystemStatusUI` (84 functions) with iPhone 14 Pro hardware verification. |
+| **2026-11-03** | [`2026-11-03_milestone2_dynamic-signal-passthrough.md`](02_reverse_engineering/2026-11-03_milestone2_dynamic-signal-passthrough.md) | **Milestone 2: Cellular Dataflow Full-Chain & Dynamic Signal Passthrough**: Full architectural mapping of Baseband ⇄ CommCenter ⇄ systemstatusd ⇄ SpringBoard; disassembly proof of monolithic replacement in downstream overlay; systematic non-jailbreak bypass falsification (MDM, WirelessDomain, CarrierBundle). |
 
 ---
 
