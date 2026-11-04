@@ -146,7 +146,7 @@ All deep-dive reverse engineering reports, empirical verification logs, and chro
 
 👉 **[Go to Documentation Hub (Docs Hub)](docs/README.md)** | **[Chinese Index (ZH)](docs/ZH/README.md)** | **[English Index (EN)](docs/EN/README.md)**
 
-📌 **Latest state & next directions:** [2026-10-28 Research Roadmap](docs/EN/04_research_handoffs/2026-10-28_next-research-roadmap.md) — current audit, open questions, and prioritized research tracks.
+📌 **Latest state:** [2026-11-04 Online Carrier Override Recheck](docs/EN/04_research_handoffs/2026-11-04_online-carrier-override-recheck.md) — latest device results; see the [research roadmap](docs/EN/04_research_handoffs/2026-10-28_next-research-roadmap.md) for longer-term tracks.
 
 ```text
 docs/

@@ -10,6 +10,8 @@
 
 ---
 
+> **2026-11-04 recheck note**: This document’s online `status=1` live-fallback result came from the 2026-10-28 China Unicom sample. A purge-based retest against a confirmed online China Mobile 5G baseline still showed the variant name in Control Center (without 5G) and no carrier text on the Lock Screen. The cross-operator difference is unresolved; see the [latest recheck](2026-11-04_online-carrier-override-recheck.md).
+
 ## ⚠️ 2026-10-28 22:10 Incident Record (Read First)
 
 With Find My already disabled, after running a `backup2 restore --system` of a minimal backup (`Manifest.db` + `IsFullBackup=True`):

@@ -10,6 +10,8 @@
 
 ---
 
+> **2026-11-04 recheck (cross-operator difference unresolved)**: On iPhone 14 Pro / iOS 27.0.1, `status=1` was retested through the purge harness against a confirmed online China Mobile 5G baseline (`enabled=true`, omit `displayValue/type`). Control Center showed the variant name without 5G and faint cellular dots; the Lock Screen showed no carrier text. This differs from the online native-name result in this report’s 2026-10-28 China Unicom sample. The older result remains historical evidence; do not generalize `status=1` online behavior as universal live-fallback until the same fields are reproduced under the China Unicom conditions. See the [2026-11-04 online recheck](2026-11-04_online-carrier-override-recheck.md).
+
 ## 1. What Was Added
 
 1. **REA 6.8.0** installed locally under `.tools/rea-cli` with Node 24.22.1.

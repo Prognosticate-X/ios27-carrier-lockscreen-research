@@ -4,7 +4,7 @@ This directory houses the comprehensive reverse engineering, empirical verificat
 
 [中文文档目录 (Chinese Documentation Index)](../ZH/README.md)
 
-> **Latest state (2026-10-28)**: current conclusions, open questions, and next-phase research tracks are maintained in the [2026-10-28 Research Roadmap](04_research_handoffs/2026-10-28_next-research-roadmap.md). Historical documents remain as the evidence chain; some are marked Superseded.
+> **Latest state (2026-11-04)**: current conclusions, open questions, and next-phase research tracks are maintained in the [2026-11-04 Online Recheck](04_research_handoffs/2026-11-04_online-carrier-override-recheck.md) and [2026-10-28 Research Roadmap](04_research_handoffs/2026-10-28_next-research-roadmap.md). Historical documents remain as the evidence chain; some are marked Superseded.
 
 ---
 
@@ -56,6 +56,7 @@ This directory houses the comprehensive reverse engineering, empirical verificat
 | 2026-10-19 | [`2026-10-19_research-progress-snapshot.md`](04_research_handoffs/2026-10-19_research-progress-snapshot.md) | **Display Domain Progress Snapshot**: Lock Screen vs Control Center rendering divergence and partial override probes. |
 | 2026-10-19 | [`2026-10-19_commcenter-preference-injection.md`](04_research_handoffs/2026-10-19_commcenter-preference-injection.md) | **CommCenter Preference Injection Handoff**: 12-domain preference test results and HomeDomain vs WirelessDomain isolation. |
 | 2026-10-21 | [`2026-10-21_dynamic-carrier-and-vpn-resolution.md`](04_research_handoffs/2026-10-21_dynamic-carrier-and-vpn-resolution.md) | **Dynamic Carrier Verdict & VPN Badge Resolution**: Mathematical proof of `cellularEntry` atomic replacement and VPN fix. |
+| **2026-11-04** | [`2026-11-04_online-carrier-override-recheck.md`](04_research_handoffs/2026-11-04_online-carrier-override-recheck.md) | **Online Carrier Override Recheck**: confirms the `status=5` custom name while bars/network type remain static; China Mobile online `status=1` differs from the earlier China Unicom sample. |
 | **2026-10-28** | [`2026-10-28_next-research-roadmap.md`](04_research_handoffs/2026-10-28_next-research-roadmap.md) | **Latest-State Audit & Next-Phase Roadmap**: safety/harness audit, time-boxed Airplane-Mode falsification, general entry override engine, compatibility and delivery hardening. |
 | **2026-10-28** | [`2026-10-28_airplane-mode-status-matrix.md`](04_research_handoffs/2026-10-28_airplane-mode-status-matrix.md) | **Airplane-Mode Coupling Matrix**: REA + Ghidra name-gate decompilation; `status` 0–5/255 physical matrix; `status=1` live-fallback; no usable Airplane-Mode coupling combination found. |
 | **2026-10-28** | [`2026-10-28_name-only-live-override.md`](04_research_handoffs/2026-10-28_name-only-live-override.md) | **Nugget-Style Name-Only / Everything-Else-Live Research**: runtime enumeration shows no field-level flags; WirelessDomain backup injection empirically falsified and triggers Setup Assistant. |
