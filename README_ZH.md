@@ -146,7 +146,7 @@ python3 tools/generate_statusbar_archive.py -i custom.archive
 
 👉 **[前往完整技术文档中心 (Docs Hub)](docs/README.md)** | **[中文文档目录 (ZH)](docs/ZH/README.md)** | **[English Docs (EN)](docs/EN/README.md)**
 
-📌 **最新状态与下一步方向**：[2026-10-28 研究路线图](docs/ZH/04_research_handoffs/2026-10-28_next-research-roadmap.md) — 现状审计、开放问题与优先级研究轨道。
+📌 **最新状态**：[2026-11-04 在线运营商覆写复核](docs/ZH/04_research_handoffs/2026-11-04_online-carrier-override-recheck.md) — 查看最新实机结果；长期研究轨道见[研究路线图](docs/ZH/04_research_handoffs/2026-10-28_next-research-roadmap.md)。
 
 ```text
 docs/

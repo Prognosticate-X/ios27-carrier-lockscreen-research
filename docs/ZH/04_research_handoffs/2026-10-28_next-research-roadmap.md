@@ -34,6 +34,8 @@
 
 > **2026-10-28 目标修正**：用户明确要求复刻 Nugget 在 iOS 26 及以下的行为——**只改名称，信号、制式、飞行联动全部实时**。运行时枚举已证明 `STStatusBarDataCellularEntry` 没有字段级 flags；`WirelessDomain` 备份注入已实测**证伪且不安全**：既未写入目标文件，又把 14 Pro 置入 Setup Assistant。非越狱边界内目前没有可用的“只改名称、其余全 live”方案。详见 [Nugget 式“只改名称”路线研究](2026-10-28_name-only-live-override.md)。Track B 的优先级应从“通用 entry 引擎”调整为“名称-only live 保持 + 上游 live 源注入”。
 
+> **2026-11-04 在线复核补记**：用 purge 实验台确认 `status=5 + string/crossfadeString` 可在锁屏和控制中心显示自定义名，但同时指定的格数和 5G 制式是静态字段。`status=1` 在“中国移动 5G”在线样本中仍显示变体名（控制中心）且锁屏无名称，与 10-28 中国联通样本的“原生名回退”记录不一致；需检查 SIM/运营商差异。详见 [在线运营商覆写复核](2026-11-04_online-carrier-override-recheck.md)。
+
 ---
 
 ## 1. 本地现状审计（2026-10-28）

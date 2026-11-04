@@ -62,8 +62,8 @@ def parse_value(text: str) -> Any:
 def build_variant_archive(name: str, fields: Dict[str, Any], omit: Set[str]) -> bytes:
     entry = dict(DEFAULT_FIELDS)
     entry.update(fields)
-    entry["string"] = name
-    entry["crossfadeString"] = name
+    entry["string"] = fields.get("string", name)
+    entry["crossfadeString"] = fields.get("crossfadeString", name)
 
     objects: list[Any] = ["$null"]
 
@@ -93,7 +93,8 @@ def build_variant_archive(name: str, fields: Dict[str, Any], omit: Set[str]) -> 
     data: Dict[str, Any] = {}
     uid_data = add(data)
 
-    uid_name = add(name)
+    uid_name = add(str(entry["string"]))
+    uid_crossfade = add(str(entry["crossfadeString"]))
     entry_obj: Dict[str, Any] = {}
     uid_entry = add(entry_obj)
     for key, value in entry.items():
@@ -101,8 +102,10 @@ def build_variant_archive(name: str, fields: Dict[str, Any], omit: Set[str]) -> 
             continue
         if value is None:
             entry_obj[key] = plistlib.UID(0)
-        elif key in ("string", "crossfadeString"):
+        elif key == "string":
             entry_obj[key] = uid_name
+        elif key == "crossfadeString":
+            entry_obj[key] = uid_crossfade
         else:
             entry_obj[key] = value
     data["cellularEntry"] = uid_entry

@@ -10,6 +10,8 @@
 
 ---
 
+> **2026-11-04 复核提示**：本文 `status=1` 在线 live-fallback 结论来自 10-28 中国联通样本。以已确认在线的中国移动 5G 基线、purge 后复测时，控制中心仍显示变体名且无 5G，锁屏无运营商文字。跨运营商差异尚未解释；详见[最新复核记录](2026-11-04_online-carrier-override-recheck.md)。
+
 ## ⚠️ 2026-10-28 22:10 事故记录（重要，先读）
 
 在 Find My 已关闭的前提下，执行一版 `backup2 restore --system` 的最小备份（`Manifest.db` + `IsFullBackup=True`）后：

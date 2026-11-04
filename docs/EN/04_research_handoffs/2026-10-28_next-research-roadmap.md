@@ -34,6 +34,8 @@
 
 > **2026-10-28 goal correction**: The user explicitly wants Nugget's iOS 26-and-earlier behavior: **change only the name while signal, radio type, and Airplane-Mode coupling stay live**. Runtime enumeration has shown that `STStatusBarDataCellularEntry` has no field-level flags. **WirelessDomain backup injection is now falsified and unsafe**: it did not write the target file and put the 14 Pro into Setup Assistant. There is currently no usable non-jailbroken “name-only, everything else live” solution. See [Nugget-Style Name-Only Research](2026-10-28_name-only-live-override.md). Track B should be re-scoped from “general entry engine” to “name-only live preservation + upstream live-source injection”.
 
+> **2026-11-04 online recheck**: The purge harness confirmed that `status=5` with `string/crossfadeString` displays a custom name on the Lock Screen and in Control Center, while explicitly written bars and 5G type remain static. In the China Mobile 5G online sample, `status=1` still showed the variant name in Control Center and no name on the Lock Screen, differing from the 2026-10-28 China Unicom native-name fallback sample. Investigate SIM/operator differences; see the [online carrier override recheck](2026-11-04_online-carrier-override-recheck.md).
+
 ---
 
 ## 1. Local-State Audit (2026-10-28)
